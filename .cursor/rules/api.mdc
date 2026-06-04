@@ -1,0 +1,20 @@
+---
+alwaysApply: true
+---
+# API Best Practices
+
+Conventions for designing and exposing HTTP APIs in this project. These apply to the web (driving) adapter — controllers translate between HTTP and the application layer and contain no business logic. See the Kotlin + Spring Boot best practices for controller, validation, and error-handling details, and the hexagonal architecture guidelines for layering.
+
+## Design
+
+- **Thin controllers.** Controllers translate HTTP ↔ application calls and nothing more — no business rules, no persistence.
+- **Dedicated request/response DTOs** per endpoint. Never expose entities or domain models directly over the wire; map at the boundary. This decouples the API contract from internal models.
+- **RESTful conventions:** nouns for resources, correct HTTP verbs and status codes (201 on create with `Location`, 204 on no-content delete, 200 on read). Use 4xx for client errors, 5xx for server faults.
+- **Versioning:** version the API (URI `/v1/...` or media-type). Don't break existing consumers.
+- **Pagination, filtering, sorting** for collection endpoints; never return unbounded lists.
+
+## Contract & Robustness
+
+- **Consistent error format.** Adopt a single error envelope (RFC 7807 `application/problem+json` is a good default) across the whole API.
+- **Document with OpenAPI** (springdoc). Keep it generated from code so it stays accurate.
+- **Idempotency** for unsafe-but-retryable operations (e.g. payments) via idempotency keys.

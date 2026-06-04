@@ -1,0 +1,47 @@
+---
+alwaysApply: true
+---
+# Testing Best Practices
+
+Conventions for unit and integration testing in this project. These expand on the testing notes in the Kotlin + Spring Boot guidelines and assume the hexagonal layering (pure core, infrastructure at the edges).
+
+## Principles
+
+- **Test behavior, not implementation.** Assert on observable outcomes and contracts, not private methods or internal call sequences. Tests should survive a refactor that preserves behavior.
+- **The test pyramid.** Many fast unit tests, fewer integration tests, very few end-to-end tests. Push logic down into the pure core so most of it is unit-testable without infrastructure.
+- **One reason to fail.** Each test verifies one behavior. Multiple unrelated assertions in a single test make failures ambiguous.
+- **Tests are first-class code.** Readable, maintained, reviewed. Duplication in tests is more tolerable than cleverness — clarity wins over DRY.
+- **Deterministic and isolated.** No dependence on wall-clock time, random seeds, ordering, shared mutable state, or external networks. Inject clocks and randomness so they can be controlled.
+- **Fast feedback.** Unit tests run in milliseconds; keep slow tests out of the inner loop and clearly separated.
+
+## Structure & Naming
+
+- **Arrange–Act–Assert (Given–When–Then).** Make the three phases visually distinct in every test.
+- **Descriptive names** that state the scenario and expected outcome, e.g. `returnsNotFound_whenOrderDoesNotExist`. The name should explain a failure without reading the body.
+- **Mirror the production structure** so tests are easy to locate; keep unit and integration tests separable (by source set, suffix, or tag) so they can run independently.
+- **Prefer explicit data builders / fixtures** over sprawling setup. Build only the state the test needs; avoid giant shared `@BeforeEach` blocks that obscure what matters.
+
+## Unit Testing
+
+- **Scope:** domain models, domain services, and use cases — in isolation, with no Spring context, database, or network.
+- **Substitute outbound ports with test doubles.** Use fakes (in-memory implementations) where possible; reserve mocks for verifying interactions that matter. Don't mock types you don't own — wrap them behind a port and fake the port.
+- **Don't over-mock.** Mocking everything tests the mocks, not the code. If a test needs many mocks, the unit may be doing too much.
+- **Cover edges and failure paths**, not just the happy path: nulls, empties, boundaries, invalid input, and the error branches the code claims to handle.
+- **Keep them pure.** No file I/O, no clock, no randomness unless injected and controlled.
+
+## Integration Testing
+
+- **Scope:** the seams unit tests can't cover — persistence, transactions, serialization, HTTP wiring, security, and interaction with real infrastructure.
+- **Use realistic infrastructure.** Run against the same database engine as production via Testcontainers; avoid in-memory substitutes (e.g. H2) that hide dialect, constraint, and concurrency differences.
+- **Use the narrowest slice that proves the behavior.** Test one adapter or one wired path at a time rather than booting the whole application for everything. Reserve full end-to-end boots for a small number of critical flows.
+- **Exercise the things that only break in reality:** transaction boundaries and rollback, lazy loading, cascade behavior, unique/foreign-key constraints, mapping round-trips, and timeouts.
+- **Manage state explicitly.** Each test sets up and tears down its own data (or runs in a rolled-back transaction). Never depend on data left by another test or on execution order.
+- **Stub external services** (third-party HTTP) at the boundary with a fake server rather than calling the real thing; keep these tests deterministic.
+
+## What Not To Do
+
+- Don't test the framework or the language (e.g. that Spring Data saves a row, that a getter returns a value).
+- Don't assert on log output or incidental formatting as a proxy for behavior.
+- Don't write tests that pass regardless of the production code (tautological assertions, asserting on the mock you just configured).
+- Don't let flaky tests linger — quarantine and fix or delete them; a flaky suite erodes trust in all tests.
+- Don't chase a coverage number for its own sake. Coverage shows what was executed, not what was verified.

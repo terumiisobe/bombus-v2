@@ -1,0 +1,87 @@
+---
+description: Hexagonal architecture for this project
+alwaysApply: true
+---
+
+# Architecture Guidelines: Hexagonal (Ports & Adapters)
+
+These rules govern how code is structured in this project. Follow them for every new feature, refactor, and review.
+
+## Core Principle
+
+The application core (domain + use cases) must not depend on infrastructure. Dependencies always point **inward**. Infrastructure depends on the core, never the reverse.
+
+```
+Adapters → Ports → Application → Domain
+(outer)                          (inner)
+```
+
+## Layers
+
+### Domain (innermost)
+- Pure business logic: entities, value objects, domain services, domain events.
+- No framework, ORM, HTTP, or I/O imports. No annotations from infrastructure libraries.
+- Knows nothing about how it is persisted or delivered.
+
+### Application (use cases)
+- Orchestrates domain objects to fulfill a use case.
+- Defines **ports** (interfaces) for everything it needs from the outside world.
+- Depends only on the domain and on port interfaces — never on concrete adapters.
+
+### Ports
+- **Driving (inbound) ports:** interfaces the application exposes to be called (e.g. `CreateOrderUseCase`).
+- **Driven (outbound) ports:** interfaces the application requires from the outside (e.g. `OrderRepository`, `PaymentGateway`, `EventPublisher`).
+- Ports are owned by the core, defined in terms of the domain — not in terms of any technology.
+
+### Adapters (outermost)
+- **Driving adapters:** translate external input into calls on inbound ports (REST controllers, CLI, message consumers, schedulers).
+- **Driven adapters:** implement outbound ports against concrete tech (database repositories, HTTP clients, queue producers, file systems).
+- All framework, ORM, and SDK code lives here.
+
+## Suggested Folder Structure
+
+```
+src/
+  domain/
+    model/
+    service/
+  application/
+    port/
+      in/        # driving ports (use case interfaces)
+      out/       # driven ports (repository, gateway interfaces)
+    usecase/     # use case implementations
+  adapter/
+    in/
+      web/       # REST/GraphQL controllers
+      messaging/ # consumers
+    out/
+      persistence/
+      external/  # third-party API clients
+  config/        # wiring / dependency injection
+```
+
+## Rules
+
+1. **Dependency direction is one-way.** Domain → nothing. Application → domain. Adapters → application ports + domain. Never wire an outer layer's concrete class into an inner layer.
+2. **Depend on ports, not adapters.** Use cases reference outbound port interfaces; concrete adapters are injected at composition time (in `config/`).
+3. **No infrastructure leakage into the core.** No ORM entities, HTTP types, or framework annotations in `domain/` or `application/`. Map between persistence/transport models and domain models inside adapters.
+4. **One port per responsibility.** Keep ports small and intention-revealing. Prefer `LoadOrderPort` + `SaveOrderPort` over a fat `OrderRepository` if responsibilities differ.
+5. **Use cases are the only entry to business logic.** Driving adapters must not contain business rules — they only translate and delegate.
+6. **Domain models stay rich and persistence-agnostic.** Avoid anemic models; behavior belongs with the data it operates on.
+7. **Mapping at the boundary.** Each adapter is responsible for translating to/from domain types. The core never sees DTOs, requests, or rows.
+8. **Composition root does the wiring.** All dependency injection / bean configuration lives in `config/`. The core declares interfaces; the root binds implementations.
+
+## Testing
+
+- **Domain & application:** unit tested in isolation with fakes/mocks for outbound ports — no database, network, or framework required.
+- **Adapters:** integration tested against the real technology they wrap.
+- **Use cases:** test the orchestration by driving the inbound port and asserting on outbound port interactions.
+
+## Pull Request Checklist
+
+- [ ] No infrastructure imports in `domain/` or `application/`.
+- [ ] New external dependency is expressed as an outbound port, implemented in an adapter.
+- [ ] Business rules live in the domain/use case, not in controllers or repositories.
+- [ ] Boundary mapping (DTO ↔ domain) is present and not bypassed.
+- [ ] Wiring added in `config/`, not inside the core.
+- [ ] Core logic covered by unit tests without infrastructure.

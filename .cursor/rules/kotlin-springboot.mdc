@@ -1,0 +1,97 @@
+---
+alwaysApply: true
+---
+# Kotlin + Spring Boot Best Practices
+
+Conventions for writing Kotlin services on Spring Boot in this project. These complement the hexagonal architecture guidelines and the API best practices doc: Kotlin idioms and Spring usage apply *within* each layer, but never let Spring or JPA leak into the domain.
+
+## Kotlin Language Idioms
+
+- **Prefer immutability.** Use `val` over `var`; favor read-only collections (`List`, `Map`) over mutable ones. Expose immutable types from public APIs.
+- **Model data with `data class`.** Use them for DTOs, value objects, and domain models. Keep them small and focused.
+- **Embrace null safety.** Avoid `!!`. Use `?.`, `?:`, `let`, and `requireNotNull`/`checkNotNull` with clear messages. Make nullability explicit in signatures rather than defaulting everything to nullable.
+- **No Kotlin nullable for "not yet loaded".** Distinguish "absent" (`null`) from "empty"; prefer sealed types or `Optional`-free domain modeling.
+- **Use expression bodies** for short functions: `fun fullName() = "$first $last"`.
+- **Sealed classes / interfaces for closed hierarchies** (e.g. result states, domain events). Combine with `when` for exhaustive handling — omit the `else` branch so the compiler enforces completeness.
+- **Extension functions** for cohesive helpers, but keep them discoverable; avoid scattering domain logic into extensions far from the type.
+- **Scope functions deliberately:** `let` for nullable transforms, `apply` for object configuration, `also` for side effects, `run`/`with` for grouping. Don't nest them into unreadable chains.
+- **Avoid companion-object utility dumping grounds.** Prefer top-level functions or proper services.
+- **Coroutines vs blocking:** pick one model per layer and be consistent. If using WebFlux/coroutines, don't block; if using MVC, don't half-adopt coroutines. Never call blocking JDBC inside a coroutine without `Dispatchers.IO`.
+
+## Spring Boot Configuration & Dependency Injection
+
+- **Constructor injection only.** No `@Autowired` on fields or setters. Constructor injection makes dependencies explicit, supports `val`, and keeps classes testable without the Spring context.
+
+  ```kotlin
+  @Service
+  class OrderService(
+      private val orderRepository: OrderRepository,
+      private val paymentGateway: PaymentGateway,
+  )
+  ```
+
+- **Don't annotate the domain.** `@Service`, `@Component`, `@Transactional`, JPA annotations, etc. belong in the application/adapter layers. The domain stays framework-free.
+- **Type-safe configuration.** Bind config with `@ConfigurationProperties` data classes, validated, instead of scattering `@Value`. Mark them `@ConstructorBinding`-style (immutable) where possible.
+
+  ```kotlin
+  @ConfigurationProperties(prefix = "payment")
+  data class PaymentProperties(
+      val apiUrl: String,
+      val timeout: Duration = Duration.ofSeconds(5),
+  )
+  ```
+
+- **Profiles for environments**, not for feature flags. Keep `application.yml` lean; externalize secrets (env vars / vault), never commit them.
+- **One bean, one responsibility.** Avoid god services. Define beans in `@Configuration` classes when wiring third-party objects.
+- **Composition root.** Keep Spring wiring in the `config/` layer per the architecture rules; adapters implement ports, configuration binds them.
+- **Use `kotlin-spring` and `kotlin-jpa` compiler plugins** so Spring/JPA classes get the `open`/no-arg behavior they need without manually opening classes.
+
+## Persistence / JPA & Transactions
+
+- **Separate JPA entities from domain models.** Entities live in the persistence adapter and carry JPA annotations; domain models stay pure. Map between them explicitly. This avoids the lazy-loading, equality, and mutability problems that come from using entities as domain objects.
+- **Avoid `data class` for JPA entities.** Generated `equals`/`hashCode`/`copy` interact badly with JPA identity, proxies, and lazy fields. Use regular classes with carefully written `equals`/`hashCode` based on a business key (or the id, with proxy-safe handling).
+- **`@Transactional` at the use-case (application service) boundary**, not on repositories and not on controllers. One transaction per use case. Be aware Spring's `@Transactional` needs the method to be called through the proxy — self-invocation won't start a transaction.
+- **Default to read-only transactions** for queries: `@Transactional(readOnly = true)`.
+- **Beware lazy loading outside transactions.** Fetch what you need within the transaction; map to domain/DTO before returning. Avoid `OpenSessionInView` (disable it) so lazy-init errors surface in tests, not production.
+- **No business logic in repositories.** Repositories load and save; orchestration lives in use cases.
+- **Use Spring Data interfaces** for standard access; drop to explicit queries (`@Query`, JPQL, or a query DSL) for anything non-trivial. Watch for N+1 — use fetch joins or entity graphs.
+- **Manage schema with migrations** (Flyway/Liquibase). Never rely on `hibernate.ddl-auto` beyond `validate` in non-dev environments.
+
+## Validation
+
+- **Validate at the edge.** Annotate request DTOs with Jakarta Bean Validation (`@NotNull`, `@Email`, `@Size`, etc.) and trigger with `@Valid` on the controller parameter.
+- **Domain invariants live in the domain.** Bean Validation guards input shape; business rules (e.g. "order total must be positive after discount") are enforced by the domain model, typically in constructors/factory methods that reject invalid state.
+- **Fail fast and explicitly.** Use `require`/`check` for precondition/state violations in Kotlin, surfaced as meaningful exceptions.
+
+## Error Handling
+
+- **Centralize HTTP error mapping** with `@RestControllerAdvice` + `@ExceptionHandler`. Map domain/application exceptions to HTTP responses there, in the web adapter — not in the core.
+- **Define a small exception hierarchy** in the application layer (e.g. `NotFoundException`, `ConflictException`, `ValidationException`) that the advice translates to status codes. The domain throws domain exceptions; the adapter decides the HTTP representation.
+- **Don't leak internals.** Never return stack traces or raw exception messages to clients. Log full detail server-side with correlation/trace IDs; return a safe, structured message.
+- **Prefer result modeling for expected outcomes.** Use sealed types / `Result`-like returns for predictable branching ("payment declined"); reserve exceptions for exceptional conditions.
+
+## Testing
+
+- **Pure unit tests for domain and use cases.** No Spring context, no database — inject fakes/mocks for outbound ports. These should be fast and the bulk of your tests.
+- **Use JUnit 5** with idiomatic Kotlin assertions (kotlin.test, AssertJ, or Kotest). MockK is preferred over Mockito for Kotlin (handles final classes, coroutines, idiomatic syntax).
+- **Slice tests for adapters:** `@WebMvcTest` for controllers (mock the service), `@DataJpaTest` for persistence. Avoid spinning the full context when a slice will do.
+- **Integration tests with Testcontainers** for real database behavior, instead of H2 — H2 hides dialect and constraint differences. Use `@SpringBootTest` sparingly for true end-to-end paths.
+- **Test transaction boundaries and lazy loading** explicitly, since these only fail under realistic conditions.
+- **Don't test the framework.** Test your logic and your contracts, not Spring Data's CRUD.
+
+## Security
+
+- **Spring Security with explicit config.** Define a `SecurityFilterChain` bean; deny by default and open up specific endpoints, rather than the reverse.
+- **Stateless auth for APIs.** Prefer JWT/OAuth2 resource-server setup; disable session creation where not needed. CSRF protection applies to browser/session flows — configure deliberately, don't blanket-disable.
+- **Never store plaintext secrets or passwords.** Hash passwords with a strong adaptive algorithm (BCrypt/Argon2 via Spring's `PasswordEncoder`). Keep credentials in env/secret stores.
+- **Authorize at the use-case boundary** (method security `@PreAuthorize`, or checks in the application layer), not only at the URL level, so business operations are protected regardless of entry point.
+- **Validate and sanitize all input**; rely on parameterized queries (Spring Data / JPA do this) — never build queries by string concatenation.
+- **Principle of least privilege** for DB users, service accounts, and tokens. Set timeouts and limits on outbound calls.
+- **Keep dependencies patched.** Use dependency scanning; treat known-vulnerable libraries as build failures.
+
+## Project Conventions (Maven)
+
+- Use the `kotlin-maven-plugin` with `spring` and `jpa` (`all-open` / `no-arg`) compiler plugins enabled.
+- Pin Kotlin and Spring Boot versions via the parent / `dependencyManagement`; don't mix versions across modules.
+- Keep `application.yml` profile-specific files (`application-dev.yml`, etc.) and load secrets externally.
+- One module per deployable, or modularize by feature if the build grows — mirror the feature-first layout from the architecture guidelines.
