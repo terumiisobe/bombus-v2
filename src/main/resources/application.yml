@@ -12,7 +12,7 @@ spring:
     hibernate:
       ddl-auto: ${JPA_DDL_AUTO:validate}
   flyway:
-    enabled: ${FLYWAY_ENABLED:false}
+    enabled: ${FLYWAY_ENABLED:true}
 
 springdoc:
   api-docs:
