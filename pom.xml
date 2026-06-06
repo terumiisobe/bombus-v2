@@ -21,6 +21,7 @@
         <java.version>21</java.version>
         <kotlin.version>2.1.10</kotlin.version>
         <springdoc.version>2.8.6</springdoc.version>
+        <twilio.version>12.1.1</twilio.version>
     </properties>
 
     <dependencies>
@@ -35,6 +36,15 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.twilio.sdk</groupId>
+            <artifactId>twilio</artifactId>
+            <version>${twilio.version}</version>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -81,6 +91,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
