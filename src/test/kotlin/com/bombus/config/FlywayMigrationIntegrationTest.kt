@@ -15,6 +15,8 @@ import org.testcontainers.junit.jupiter.Testcontainers
     properties = [
         "spring.flyway.enabled=true",
         "spring.jpa.hibernate.ddl-auto=validate",
+        "twilio.auth-token=test-auth-token",
+        "twilio.public-base-url=https://example.test",
     ],
 )
 class FlywayMigrationIntegrationTest {

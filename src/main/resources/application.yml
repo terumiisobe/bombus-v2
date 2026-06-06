@@ -14,6 +14,10 @@ spring:
   flyway:
     enabled: ${FLYWAY_ENABLED:true}
 
+twilio:
+  auth-token: ${TWILIO_AUTH_TOKEN}
+  public-base-url: ${TWILIO_PUBLIC_BASE_URL}
+
 springdoc:
   api-docs:
     path: /v1/api-docs
