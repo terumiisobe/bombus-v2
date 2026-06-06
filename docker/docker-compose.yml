@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: bombus-postgres
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bombus}
+      POSTGRES_USER: ${POSTGRES_USER:-bombus_usr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bombuspass}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ../database.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bombus_usr} -d ${POSTGRES_DB:-bombus}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

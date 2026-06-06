@@ -1,12 +1,18 @@
 spring:
   application:
     name: bombus
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bombus}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: validate
+      ddl-auto: ${JPA_DDL_AUTO:validate}
   flyway:
-    enabled: true
+    enabled: ${FLYWAY_ENABLED:false}
 
 springdoc:
   api-docs:
