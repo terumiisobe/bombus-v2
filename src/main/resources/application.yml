@@ -18,6 +18,10 @@ twilio:
   auth-token: ${TWILIO_AUTH_TOKEN}
   public-base-url: ${TWILIO_PUBLIC_BASE_URL}
 
+colmeia:
+  # Status excluded by default from a plain/species count (resolved to an id at runtime).
+  default-excluded-status: ${COLMEIA_DEFAULT_EXCLUDED_STATUS:perdida}
+
 springdoc:
   api-docs:
     path: /v1/api-docs
