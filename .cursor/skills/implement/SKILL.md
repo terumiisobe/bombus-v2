@@ -14,7 +14,7 @@ Reference docs: `architecture-rules.md`, `kotlin-springboot-best-practices.md`, 
 
 ## Before writing code
 
-- [ ] **Read the deliverable** from the planning doc: goal, scope, dependencies, acceptance criteria, notes/risks.
+- [ ] **Read the deliverable** from the planning doc: goal, scope, dependencies, **implementation blueprint** (file/package layout, domain model, port signatures, endpoint specs, persistence/migration sketch, shared-file touchpoints), acceptance criteria, notes/risks. Build to the contracts the blueprint pins down — don't redefine any shared interface another deliverable depends on.
 - [ ] **Confirm dependencies have landed.** If a prerequisite deliverable isn't done, stop and surface it — don't stub around it silently.
 - [ ] **Re-read the confirmed requirements** (backend section) relevant to this deliverable so behavior matches what was agreed.
 - [ ] **Do NOT introduce new product decisions.** If the deliverable is missing a detail you'd have to assume, raise it back to Refine rather than inventing it. Implementation choices (naming, structure, libraries within the agreed stack) are yours; product/architecture choices are not.
@@ -65,6 +65,7 @@ Work from the core outward so dependencies always point inward.
 
 - [ ] Keep the change scoped to this deliverable — no unrelated drive-by edits.
 - [ ] Names clear and consistent with the feature; no dead code, commented-out blocks, or leftover debug logging.
+- [ ] **No description comments.** Do not add KDoc/doc comments or inline comments that merely describe what a class, method, property, or test does — let clear names and signatures carry that. Only keep a comment when it captures non-obvious *intent*, a constraint, or a trade-off the code itself cannot express (e.g. why a specific SQL operator is required for correctness).
 - [ ] Update OpenAPI docs / README if the contract or behavior changed.
 
 ## Done when

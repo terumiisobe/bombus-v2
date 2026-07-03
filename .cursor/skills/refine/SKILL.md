@@ -1,96 +1,95 @@
 ---
-description: Refine phase — turn a high-level one-line feature description into a planning document (tradeoffs, architecture, epics split into deployable deliverables) that feeds the implement agents
+description: Refine phase — turn a high-level one-line feature description into a concise planning document that pins down the functionality, surfaces open questions and decisions, and lays out a dependency-ordered delivery plan (inside-out per hexagonal architecture) for implement agents to execute
 globs:
 alwaysApply: false
 ---
 
 # Skill: Refine
 
-You receive a **high-level, often vague description** of something to build, e.g. "implement a CRUD app for managing bee hives" or "implement an AI-powered chatbot". Your job is **not** to write code. Your job is to produce a **planning document** that another agent (running the Implement skill) can pick up and execute deliverable by deliverable.
-
-You own: scope, assumptions, tradeoffs, architecture shape, and the breakdown into epics and deployable deliverables.
-You do NOT own: implementation details, concrete code, test code, file-level cohesion — those belong to the implement agents.
+You receive a **high-level, often vague description** of something to build — e.g. "implement a CRUD app for managing bee hives" or "implement an AI-powered chatbot". Your job is **not** to write production code. It is to produce a **concise plan** that does three things: pins down *what functionality* should be built, surfaces the *open questions and decisions*, and lays out a *delivery plan* an implement agent can execute.
 
 Reference docs: `architecture-rules.md`, `kotlin-springboot-best-practices.md`, `api-best-practices.md`, `testing-best-practices.md`.
 
-## Ask first — do NOT assume
+## What the plan is for
 
-**This is the moment to ask every question.** Do not invent requirements, pick a "reasonable default," or guess at intent. Anything that would otherwise become an assumption must instead become a question to the human. Only after the questions are answered do you proceed to the rest of the process. If new unknowns surface mid-planning, stop and ask rather than assume.
+The plan has three jobs. Everything you write serves one of them:
 
-Gather answers across two sections — **Backend** and **Frontend** — covering at least:
+1. **Functionality** — what should actually be built. If the initial request contains **2 or more distinct features**, say so explicitly and surface it to the human — we may decide to work them separately rather than in one go. Don't silently bundle multiple features into one plan.
+2. **Open questions & decisions** — what's unresolved and needs a human call, and the key architectural decisions with their tradeoffs.
+3. **Delivery plan** — the ordered, agent-facing build sequence.
 
-### Backend questions
-- [ ] **Scope & capabilities:** what must the system do; what is explicitly out of scope for now?
-- [ ] **Users & access:** who uses it; authentication and authorization needs; roles/permissions?
-- [ ] **Data:** core entities and relationships; expected volume and growth; retention/compliance constraints?
-- [ ] **Scale & performance:** expected request/throughput; latency targets; peak vs. average?
-- [ ] **Integrations:** external systems, third-party APIs, events the system must produce or consume?
-- [ ] **AI/LLM (if applicable):** hosted vs. self-hosted model; privacy of data sent to the model; cost ceiling; acceptable latency; quality bar?
-- [ ] **Persistence & infra:** any mandated datastore, cloud, or deployment target; existing services to reuse?
-- [ ] **Non-functionals:** availability, consistency needs (strong vs. eventual), audit, observability requirements?
+Keep the reasoning sections (functionality, questions, decisions) readable and to the point — casual, like you're talking a teammate through it. Keep the **delivery plan precise and neutral** — it's a feed for another agent, not prose to enjoy.
 
-### Frontend questions
-- [ ] **Surface & platform:** web, mobile, both; responsive/desktop-first; any existing app to extend?
-- [ ] **Users & flows:** key screens and primary user journeys; number/type of distinct UI roles?
-- [ ] **Stack & constraints:** mandated framework/design system; existing component library; accessibility/i18n requirements?
-- [ ] **Interaction needs:** real-time updates, offline support, file uploads, notifications?
-- [ ] **Auth UX:** login method (SSO, email/password, OAuth); session vs. token expectations?
-- [ ] **Look & scope:** is a polished UI required now, or a minimal functional one; branding constraints?
+You own: scope, the assumptions made explicit, the key decisions and tradeoffs, and the ordered breakdown of the work with the contracts that matter.
+You do not own: full code, full test code, method bodies, or micro-decisions (variable names, private helper structure). Define the interfaces and boundaries; leave the bodies to implementation.
 
-If the human cannot answer something, record it as an explicit **open question** in the output rather than silently assuming a value.
+## Ask first — don't assume
 
-## Process
+Before planning, ask the questions that actually change the design. Don't invent requirements or pick a "reasonable default" for anything load-bearing. If you can't get an answer, record it as an **open question** instead of silently assuming.
 
-(Begin only after the questions above are answered.)
+Focus only on what moves the architecture or the scope. Typically:
 
-- [ ] **Restate the request** in your own words, reflecting the answers received. Do not introduce intent the human didn't confirm.
-- [ ] **Record the answers** as the confirmed requirements (this replaces guessing). Anything still unknown stays in the open-questions list.
-- [ ] **Derive capabilities.** Turn the confirmed requirements into a concrete list of capabilities/use cases the system must support.
-- [ ] **Identify features / bounded contexts** (feature-first per `architecture-rules.md`) and how they relate.
-- [ ] **Work the tradeoffs** (see calculation guidance below) and record the decisions with reasoning, not just conclusions.
-- [ ] **Describe the target architecture** and any improvements over a naive approach, mapped onto the hexagonal layering and the Kotlin/Spring conventions.
-- [ ] **Break the work into epics, then into deployable deliverables.** Each deliverable must be independently shippable and small enough to hand to one implement agent.
-- [ ] **Sequence the deliverables** with dependencies and a suggested order (walking skeleton first).
-- [ ] **Flag risks and open questions** that need a human decision before or during implementation.
+- **Scope:** what must it do; what's explicitly out of scope for now?
+- **Multiple features?** does the request actually contain more than one feature? If so, confirm whether to plan them together or separately.
+- **Users & access:** who uses it; auth and roles/permissions?
+- **Data:** core entities and relationships; rough volume/growth.
+- **Scale:** expected throughput and latency targets, if any.
+- **Integrations:** external systems, APIs, or events it must produce/consume.
+- **AI/LLM (if relevant):** hosted vs self-hosted; data privacy; cost/latency bar.
+- **Infra:** any mandated datastore, cloud, or deployment target.
 
-## Tradeoff calculations
+Ask only what's unclear and matters. Skip what the description already answers.
 
-For each significant decision, don't just assert — show the reasoning so a reviewer can disagree with the inputs:
+## Working the tradeoffs
 
-- [ ] Name the decision and 2–3 viable options.
-- [ ] For each option, note the axes that matter for *this* system: development cost/speed, operational complexity, scalability ceiling, latency, $ cost, team familiarity, lock-in, failure modes.
-- [ ] Where numbers help, estimate them using the **confirmed** figures from the requirements (e.g. "~50 hives × N readings/day → rows/year; comfortably a single Postgres table, no sharding needed" or "stated ≤ X req/s → a single instance suffices, no queue yet"). If a needed number wasn't provided, ask — don't assume it.
-- [ ] Recommend one option and state the condition that would flip the decision ("revisit if write volume exceeds …").
+For each decision that actually carries weight, show the reasoning so someone can push back on your inputs:
 
-Examples of decisions to weigh depending on the request: datastore choice (relational vs document), sync vs async/eventing, monolith vs split services, build-vs-buy for the AI layer (hosted LLM API vs self-host), caching, read model separation, auth approach.
+- Name the decision and 2–3 real options.
+- For each, note the axes that matter *here*: dev speed, operational complexity, scalability ceiling, latency, cost, familiarity, lock-in, failure modes.
+- Where a number helps, estimate it from the **confirmed** figures (e.g. "~50 hives × N readings/day → rows/year — comfortably one Postgres table, no sharding"). If you need a number nobody gave you, ask.
+- Recommend one option and state what would flip the decision ("revisit if write volume exceeds …").
 
-## AI-specific (only when the request involves AI/LLM features)
+Only weigh decisions that carry weight — datastore choice, sync vs async/eventing, monolith vs split, build-vs-buy for an AI layer, caching, read-model separation, auth. Skip the trivial ones.
 
-- [ ] Decide model sourcing: hosted API vs self-hosted, with cost/latency/privacy tradeoffs.
-- [ ] Define how the AI capability hides behind an **outbound port** so the core stays provider-agnostic and testable (fake the port in unit tests).
-- [ ] Note context/state strategy (stateless calls + history passing, retrieval, etc.), prompt/version management, rate limits, fallback/timeout behavior, and cost controls.
-- [ ] Call out evaluation: how AI output quality is measured, since it can't be unit-tested like deterministic logic.
+## AI-specific (only if the request involves AI/LLM)
+
+- Model sourcing: hosted API vs self-hosted, with the cost/latency/privacy tradeoff.
+- Hide the AI capability behind an **outbound port** so the core stays provider-agnostic and testable (fake the port in tests).
+- Note context strategy (stateless + history passing, retrieval, etc.), prompt/version management, rate limits, timeout/fallback behavior, cost controls.
+- Say how you'd evaluate output quality, since it can't be unit-tested like deterministic logic.
+
+## The delivery plan — order inside-out
+
+This is the agent-facing part. Order the steps by **hexagonal dependency direction: from the inside out**. The inside depends on nothing; each outer layer depends only on what's already been built. So, per bounded context:
+
+1. **Domain** — entities, value objects, invariants. Depends on nothing.
+2. **Application / ports** — inbound use-case ports and outbound ports (interfaces in domain terms), and the use cases behind them. Depends only on the domain.
+3. **Adapters** — inbound (web/controllers) and outbound (persistence, external clients) that implement the ports. Depend on the application layer.
+4. **Config / wiring** — composition root, migrations, anything that assembles the above. Last.
+
+Each step depends only on earlier steps, never on later ones. Prefer a walking skeleton first where it helps.
+
+Each delivery step must carry enough for **another agent to pick it up and build it without re-deciding anything**. For each step include:
+
+- **Goal** — one line.
+- **Files/packages** — the bounded context and concrete packages/files it creates or touches.
+- **Contracts** — the interfaces this step defines or implements: entity fields + invariants, port signatures (name, params, return, thrown exceptions), or endpoint specs (verb + versioned path, request/response DTO shapes, status codes, error cases). Specify contracts, never bodies.
+- **Depends on** — which earlier steps must exist first.
+- **Acceptance / tests** — the observable outcomes that prove it, and the layer that tests them (unit / `@WebMvcTest` / `@DataJpaTest` / Testcontainers).
 
 ## Required output document
 
-Produce a `.txt` document with these sections:
+Produce a concise `.txt` document with these sections:
 
-1. **Summary** — restated request reflecting the confirmed answers (no invented intent).
-2. **Confirmed requirements** — the answers received, split into **Backend** and **Frontend** subsections. No assumptions; anything unanswered goes to open questions, not here.
-3. **Capabilities / use cases** — the concrete list.
-4. **Architecture overview** — features/bounded contexts, how they map to hexagonal layers, and improvements over the naive approach. A simple text diagram is fine.
-5. **Key decisions & tradeoffs** — one block per decision with options, the calculation/estimate, the recommendation, and the flip condition.
-6. **Risks & open questions** — what needs a human call.
-7. **Delivery plan** — epics, each broken into **deployable deliverables**. For every deliverable include:
-   - Goal (one sentence)
-   - Scope: features/ports/adapters/endpoints touched
-   - Dependencies (which deliverables must land first)
-   - Acceptance criteria (observable, testable outcomes)
-   - Notes/risks for the implement agent
-   Keep each deliverable independently shippable; order them with a walking skeleton first.
+1. **Summary** — the restated request reflecting confirmed answers, in a few sentences. If it's more than one feature, call that out here.
+2. **Functionality** — the concrete list of what will be built. If multiple features, group by feature and note whether they're planned together or split.
+3. **Architecture overview** — features/bounded contexts, how they map to the hexagonal layers, and where it beats the naive approach. A simple text diagram is welcome.
+4. **Key decisions & tradeoffs** — one short block per decision: options, the estimate/reasoning, the recommendation, the flip condition.
+5. **Risks & open questions** — what needs a human call.
+6. **Delivery plan** — the dependency-ordered, inside-out build sequence per the guidance above. Precise and neutral: goal, files/packages, contracts, depends-on, acceptance/tests for each step.
 
-Write for a downstream agent: precise, unambiguous, no code. Each deliverable should be actionable on its own without re-reading the whole document.
+Sections 1–5 read casually and stay short; depth goes into the decisions that matter, not padding. Section 6 is the agent feed — exact, unambiguous, contracts fully specified, no code bodies.
 
 ## Done when
 
-An implement agent can take any single deliverable from the Delivery plan and build it — knowing the feature, ports, contracts, acceptance criteria, and dependencies — without needing decisions that this document should have made.
+The human can see at a glance what's being built (and whether it's really one feature or several), what's still open, and why the architecture is shaped this way — and an implement agent can walk the delivery plan top to bottom, each step depending only on earlier ones, building from the domain outward without inventing a shared contract or re-deciding anything the plan should have settled.
