@@ -3,6 +3,7 @@ package com.bombus.colmeia.adapter.outbound.persistence
 import com.bombus.colmeia.domain.ColmeiaCountFilter
 import com.bombus.config.BombusApplication
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.tuple
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -110,6 +111,33 @@ class ColmeiaCountAdapterIntegrationTest {
         val count = adapter.countByOwner(OWNER, ColmeiaCountFilter(includeStatusId = 9999))
 
         assertThat(count).isZero()
+    }
+
+    @Test
+    fun `per-species breakdown counts every species without excluding perdida`() {
+        // species 1: c1, c2, c3 = 3; species 2: c4, c5 = 2. c6 belongs to OTHER and is excluded.
+        val perSpecies = adapter.breakdownBySpecies(OWNER, ColmeiaCountFilter())
+
+        assertThat(perSpecies).extracting("speciesId", "count")
+            .containsExactly(
+                tuple(1L, 3L),
+                tuple(2L, 2L),
+            )
+    }
+
+    @Test
+    fun `per-status breakdown includes perdida and a sem-status (null) group`() {
+        // desenvolvendo: c4 = 1; estavel: c1 = 1; perdida: c2, c5 = 2; sem status: c3 = 1.
+        val perStatus = adapter.breakdownByStatus(OWNER, ColmeiaCountFilter())
+
+        assertThat(perStatus).extracting("statusId", "count")
+            .containsExactlyInAnyOrder(
+                tuple(STATUS_DESENVOLVENDO, 1L),
+                tuple(STATUS_ESTAVEL, 1L),
+                tuple(STATUS_PERDIDA, 2L),
+                tuple(null, 1L),
+            )
+        assertThat(perStatus.sumOf { it.count }).isEqualTo(5)
     }
 
     private fun insertColmeia(id: Long, speciesId: Long, meliponarioId: Long) {

@@ -5,9 +5,10 @@ import com.bombus.colmeia.application.port.inbound.CountDimension
 import com.bombus.colmeia.application.port.outbound.ColmeiaCountPort
 import com.bombus.colmeia.application.port.outbound.StatusColmeiaLookupPort
 import com.bombus.colmeia.domain.ColmeiaCountFilter
+import com.bombus.colmeia.domain.SpeciesCount
+import com.bombus.colmeia.domain.StatusCount
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class CountColmeiasServiceTest {
@@ -103,12 +104,71 @@ class CountColmeiasServiceTest {
     }
 
     @Test
-    fun `grouped queries are rejected (handled by the breakdown capability)`() {
-        val service = service(RecordingCountPort(result = 0))
+    fun `per-species breakdown returns all groups without the default exclusion`() {
+        val species = listOf(
+            SpeciesCount(speciesId = 1, abbreviation = "JT", commonName = "Jataí", count = 3),
+            SpeciesCount(speciesId = 2, abbreviation = "EM", commonName = "Mirim emerina", count = 2),
+        )
+        val port = RecordingCountPort(perSpecies = species)
+        val service = service(port)
 
-        assertFailsWith<IllegalArgumentException> {
-            service.count(CountColmeiasQuery(userId = OWNER, groupBy = setOf(CountDimension.SPECIES)))
-        }
+        val result = service.count(CountColmeiasQuery(userId = OWNER, groupBy = setOf(CountDimension.SPECIES)))
+
+        assertEquals(species, result.perSpecies)
+        assertNull(result.perStatus)
+        assertEquals(5, result.total)
+        assertNull(port.lastFilter?.includeStatusId)
+        assertNull(port.lastFilter?.excludeStatusId)
+    }
+
+    @Test
+    fun `per-status breakdown includes perdida and the sem status group`() {
+        val statuses = listOf(
+            StatusCount(statusId = 1, statusName = "desenvolvendo", count = 1),
+            StatusCount(statusId = 3, statusName = "estavel", count = 1),
+            StatusCount(statusId = perdidaId, statusName = "perdida", count = 2),
+            StatusCount(statusId = null, statusName = null, count = 1),
+        )
+        val port = RecordingCountPort(perStatus = statuses)
+        val service = service(port)
+
+        val result = service.count(CountColmeiasQuery(userId = OWNER, groupBy = setOf(CountDimension.STATUS)))
+
+        assertEquals(statuses, result.perStatus)
+        assertNull(result.perSpecies)
+        assertEquals(5, result.total)
+        assertNull(port.lastFilter?.excludeStatusId)
+    }
+
+    @Test
+    fun `breakdown by both dimensions populates both lists`() {
+        val species = listOf(SpeciesCount(speciesId = 1, abbreviation = "JT", commonName = "Jataí", count = 4))
+        val statuses = listOf(StatusCount(statusId = 3, statusName = "estavel", count = 4))
+        val port = RecordingCountPort(perSpecies = species, perStatus = statuses)
+        val service = service(port)
+
+        val result = service.count(
+            CountColmeiasQuery(userId = OWNER, groupBy = setOf(CountDimension.SPECIES, CountDimension.STATUS)),
+        )
+
+        assertEquals(species, result.perSpecies)
+        assertEquals(statuses, result.perStatus)
+        assertEquals(4, result.total)
+    }
+
+    @Test
+    fun `breakdown narrows by an explicit species filter without default exclusion`() {
+        val port = RecordingCountPort(perStatus = emptyList())
+        val service = service(port)
+
+        service.count(
+            CountColmeiasQuery(userId = OWNER, speciesId = 1, groupBy = setOf(CountDimension.STATUS)),
+        )
+
+        assertEquals(
+            ColmeiaCountFilter(speciesId = 1, includeStatusId = null, excludeStatusId = null),
+            port.lastFilter,
+        )
     }
 
     private fun service(
@@ -120,16 +180,34 @@ class CountColmeiasServiceTest {
         properties = ColmeiaCountProperties(defaultExcludedStatus = "perdida"),
     )
 
-    private class RecordingCountPort(private val result: Long) : ColmeiaCountPort {
+    private class RecordingCountPort(
+        private val result: Long = 0,
+        private val perSpecies: List<SpeciesCount> = emptyList(),
+        private val perStatus: List<StatusCount> = emptyList(),
+    ) : ColmeiaCountPort {
         var lastUserId: Long? = null
             private set
         var lastFilter: ColmeiaCountFilter? = null
             private set
 
         override fun countByOwner(userId: Long, filter: ColmeiaCountFilter): Long {
+            record(userId, filter)
+            return result
+        }
+
+        override fun breakdownBySpecies(userId: Long, filter: ColmeiaCountFilter): List<SpeciesCount> {
+            record(userId, filter)
+            return perSpecies
+        }
+
+        override fun breakdownByStatus(userId: Long, filter: ColmeiaCountFilter): List<StatusCount> {
+            record(userId, filter)
+            return perStatus
+        }
+
+        private fun record(userId: Long, filter: ColmeiaCountFilter) {
             lastUserId = userId
             lastFilter = filter
-            return result
         }
     }
 
