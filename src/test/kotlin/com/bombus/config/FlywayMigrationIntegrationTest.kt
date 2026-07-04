@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
         "spring.jpa.hibernate.ddl-auto=validate",
         "twilio.auth-token=test-auth-token",
         "twilio.public-base-url=https://example.test",
+        "openai.api-key=test-openai-key",
     ],
 )
 class FlywayMigrationIntegrationTest {
