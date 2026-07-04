@@ -22,6 +22,12 @@ colmeia:
   # Status excluded by default from a plain/species count (resolved to an id at runtime).
   default-excluded-status: ${COLMEIA_DEFAULT_EXCLUDED_STATUS:perdida}
 
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: ${OPENAI_MODEL:gpt-4o-mini}
+  base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+  timeout: ${OPENAI_TIMEOUT:10s}
+
 springdoc:
   api-docs:
     path: /v1/api-docs
