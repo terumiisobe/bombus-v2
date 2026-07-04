@@ -22,6 +22,12 @@ colmeia:
   # Status excluded by default from a plain/species count (resolved to an id at runtime).
   default-excluded-status: ${COLMEIA_DEFAULT_EXCLUDED_STATUS:perdida}
 
+chatbot:
+  session:
+    # Sliding session window: refreshed on every message. Expired sessions read as fresh.
+    ttl: ${CHATBOT_SESSION_TTL:15m}
+    max-context-messages: ${CHATBOT_SESSION_MAX_CONTEXT_MESSAGES:5}
+
 openai:
   api-key: ${OPENAI_API_KEY}
   model: ${OPENAI_MODEL:gpt-4o-mini}

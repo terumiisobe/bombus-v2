@@ -24,3 +24,8 @@ INSERT INTO status_colmeia (id, name) VALUES
   (4, 'perdida');
 
 SELECT setval(pg_get_serial_sequence('status_colmeia', 'id'), (SELECT MAX(id) FROM status_colmeia));
+
+-- One active chat session per WhatsApp user (Epic 6): enables an ON CONFLICT upsert on
+-- read/refresh. The unique constraint's index replaces the plain lookup index above.
+DROP INDEX IF EXISTS idx_sessao_chat_usuario_whatsapp;
+ALTER TABLE sessao_chat ADD CONSTRAINT uq_sessao_chat_usuario_whatsapp UNIQUE (usuario_whatsapp_id);

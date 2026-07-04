@@ -1,8 +1,7 @@
 package com.bombus.adapter.inbound.web
 
-import com.bombus.chatbot.application.port.inbound.ResolveCustomerUseCase
-import com.bombus.chatbot.domain.Customer
-import com.bombus.chatbot.domain.CustomerResolution
+import com.bombus.chatbot.application.port.inbound.HandleIncomingWhatsAppMessageUseCase
+import com.bombus.chatbot.application.port.inbound.IncomingMessage
 import com.bombus.config.BombusApplication
 import com.bombus.config.SecurityConfig
 import com.bombus.config.TwilioConfig
@@ -27,7 +26,6 @@ import javax.crypto.spec.SecretKeySpec
     TwilioConfig::class,
     SecurityConfig::class,
     TwilioSignatureValidator::class,
-    WhatsAppReplyComposer::class,
     WebExceptionHandler::class,
 )
 @TestPropertySource(
@@ -41,13 +39,13 @@ class TwilioWhatsAppWebhookControllerTest(
 ) {
 
     @MockitoBean
-    private lateinit var resolveCustomer: ResolveCustomerUseCase
+    private lateinit var handleIncomingMessage: HandleIncomingWhatsAppMessageUseCase
 
     @Test
-    fun `resolved sender returns 200 with a linked greeting`() {
-        given(resolveCustomer.resolve("+5511999999999"))
-            .willReturn(CustomerResolution.Resolved(Customer(whatsappUserId = 1, userId = 1, displayName = "Ana")))
-        val params = linkedMapOf("From" to "whatsapp:+5511999999999", "Body" to "oi")
+    fun `valid signature delegates to the use case and returns its reply as TwiML`() {
+        given(handleIncomingMessage.handle(IncomingMessage(phoneNumber = "+5511999999999", text = "quantas colmeias?")))
+            .willReturn("Você tem 5 colmeias.")
+        val params = linkedMapOf("From" to "whatsapp:+5511999999999", "Body" to "quantas colmeias?")
         val signature = twilioSignature(SIGNED_URL, params)
 
         mockMvc.post(WEBHOOK_PATH) {
@@ -58,24 +56,7 @@ class TwilioWhatsAppWebhookControllerTest(
             status { isOk() }
             content { contentTypeCompatibleWith(MediaType.TEXT_XML) }
             content { string(org.hamcrest.Matchers.containsString("<Message>")) }
-            content { string(org.hamcrest.Matchers.containsString("Olá, Ana!")) }
-        }
-    }
-
-    @Test
-    fun `unknown sender returns 200 with the not-linked message`() {
-        given(resolveCustomer.resolve("+5511000000000")).willReturn(CustomerResolution.NotLinked)
-        val params = linkedMapOf("From" to "whatsapp:+5511000000000", "Body" to "oi")
-        val signature = twilioSignature(SIGNED_URL, params)
-
-        mockMvc.post(WEBHOOK_PATH) {
-            contentType = MediaType.APPLICATION_FORM_URLENCODED
-            header("X-Twilio-Signature", signature)
-            params.forEach { (k, v) -> param(k, v) }
-        }.andExpect {
-            status { isOk() }
-            content { contentTypeCompatibleWith(MediaType.TEXT_XML) }
-            content { string(org.hamcrest.Matchers.containsString("entre em contato com o suporte")) }
+            content { string(org.hamcrest.Matchers.containsString("Você tem 5 colmeias.")) }
         }
     }
 
