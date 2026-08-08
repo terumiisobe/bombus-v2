@@ -1,6 +1,7 @@
 package com.bombus.adapter.inbound.web
 
-import com.bombus.chatbot.application.port.inbound.ResolveCustomerUseCase
+import com.bombus.chatbot.application.port.inbound.HandleIncomingWhatsAppMessageUseCase
+import com.bombus.chatbot.application.port.inbound.IncomingMessage
 import com.bombus.config.TwilioProperties
 import com.twilio.twiml.MessagingResponse
 import com.twilio.twiml.messaging.Message
@@ -18,16 +19,15 @@ import org.springframework.web.bind.annotation.RestController
 
 /**
  * Receives inbound WhatsApp messages delivered by Twilio. Thin adapter: it verifies the
- * request signature, strips the channel-specific "whatsapp:" prefix, resolves the sender to
- * a customer, and renders the composed reply as TwiML. No business logic lives here.
+ * request signature, strips the channel-specific "whatsapp:" prefix, delegates the turn to
+ * the orchestration use case, and renders its reply as TwiML. No business logic lives here.
  */
 @RestController
 @Tag(name = "WhatsApp", description = "Inbound WhatsApp messages delivered by Twilio")
 class TwilioWhatsAppWebhookController(
     private val properties: TwilioProperties,
     private val signatureValidator: TwilioSignatureValidator,
-    private val resolveCustomer: ResolveCustomerUseCase,
-    private val replyComposer: WhatsAppReplyComposer,
+    private val handleIncomingMessage: HandleIncomingWhatsAppMessageUseCase,
 ) {
 
     @Operation(
@@ -53,8 +53,8 @@ class TwilioWhatsAppWebhookController(
         signatureValidator.verify(signedUrl, params, signature)
 
         val phoneNumber = params[FROM_PARAM].orEmpty().removePrefix(WHATSAPP_PREFIX)
-        val resolution = resolveCustomer.resolve(phoneNumber)
-        val replyText = replyComposer.compose(resolution)
+        val body = params[BODY_PARAM].orEmpty()
+        val replyText = handleIncomingMessage.handle(IncomingMessage(phoneNumber, body))
 
         val twiml = MessagingResponse.Builder()
             .message(Message.Builder(replyText).build())
@@ -69,6 +69,7 @@ class TwilioWhatsAppWebhookController(
     private companion object {
         const val TWIML_CONTENT_TYPE = "text/xml;charset=UTF-8"
         const val FROM_PARAM = "From"
+        const val BODY_PARAM = "Body"
         const val WHATSAPP_PREFIX = "whatsapp:"
     }
 }

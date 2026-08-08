@@ -1,73 +1,67 @@
 ---
-description: Implement phase (backend) — take ONE deployable deliverable from a Refine planning doc and build it in Kotlin/Spring following hexagonal layering
+description: Implement phase (backend) — in plan mode, take ONE deliverable from a Refine plan and produce a lean, inside-out implementation plan (in conversation) for a coding agent to execute in Kotlin/Spring
 globs:
 alwaysApply: false
 ---
 
-# Skill: Implement (Backend)
+# Skill: Implement (Backend) — planning
 
-You take **one deployable deliverable** from the Delivery plan of a Refine planning document and build it end to end in Kotlin + Spring Boot. You worry about implementation details, tests, and code cohesion — the planning, scope, and tradeoffs were already decided in Refine.
+You run in **plan mode**. You take **one deliverable** from a Refine plan's delivery sequence and produce a **lean implementation plan, in the conversation** (no file), that a coding agent then executes in Kotlin + Spring Boot. You decide the layer breakdown, the concrete pieces, and the order — you do **not** write the code.
 
-Scope: **backend only.** Frontend deliverables are handled by a separate skill. If a deliverable mixes both, implement the backend slice (API, contracts, persistence) and leave the frontend to its own deliverable.
+Keep the plan tight and objective. The executor knows Kotlin and Spring, so don't teach the language or spell out mechanics — state *what* to build and *where*, flag the decisions that matter, and let the agent handle the how.
 
-Reference docs: `architecture-rules.md`, `kotlin-springboot-best-practices.md`, `api-best-practices.md`, `testing-best-practices.md`.
+Backend only. Frontend is a separate skill; if a deliverable mixes both, plan the backend slice (API, contracts, persistence) and leave the rest.
 
-## Before writing code
+Reference docs — the source of truth, don't restate them: `architecture-rules.md`, `kotlin-springboot-best-practices.md`, `api-best-practices.md`, `testing-best-practices.md`. The plan points the executor at these rather than repeating their rules.
 
-- [ ] **Read the deliverable** from the planning doc: goal, scope, dependencies, **implementation blueprint** (file/package layout, domain model, port signatures, endpoint specs, persistence/migration sketch, shared-file touchpoints), acceptance criteria, notes/risks. Build to the contracts the blueprint pins down — don't redefine any shared interface another deliverable depends on.
-- [ ] **Confirm dependencies have landed.** If a prerequisite deliverable isn't done, stop and surface it — don't stub around it silently.
-- [ ] **Re-read the confirmed requirements** (backend section) relevant to this deliverable so behavior matches what was agreed.
-- [ ] **Do NOT introduce new product decisions.** If the deliverable is missing a detail you'd have to assume, raise it back to Refine rather than inventing it. Implementation choices (naming, structure, libraries within the agreed stack) are yours; product/architecture choices are not.
-- [ ] **Identify the target feature** and confirm code lands under the correct bounded context (feature-first per `architecture-rules.md`).
+## Before planning
 
-## Build inside-out
+- Read the deliverable: goal, scope, dependencies, the ports & adapters it needs (and which to **reuse vs. build new**), acceptance criteria, notes/risks.
+- Check prerequisites landed. If one hasn't, stop and surface it — don't plan around a missing dependency.
+- Look at what already exists. Don't plan a new port/adapter/entity that duplicates one already in the codebase — reuse or extend it, and say so in the plan.
+- Don't invent product decisions. Missing a behavioral detail? Kick it back to Refine. The plan owns structure and sequencing, not product/architecture calls already settled upstream.
+- Confirm the code lands under the right bounded context (feature-first per `architecture-rules.md`).
 
-Work from the core outward so dependencies always point inward.
+## The guiding principle: push logic into pure functions
 
-### Domain (innermost)
-- [ ] Implement entities / value objects under the feature's `domain/`. Enforce invariants in constructors/factory methods that reject invalid state.
-- [ ] Keep the domain pure: no Spring, JPA, HTTP, or framework annotations; no `!!`; prefer `val` and immutable collections.
-- [ ] Use `data class` for value objects; sealed classes/interfaces for closed state hierarchies; put behavior on the types (no anemic models).
+Sort the work into **calculations** (pure functions — same input, same output, no side effects), **data** (immutable values), and **actions** (anything depending on when/how often it runs: DB, HTTP, the LLM call, clock, randomness). Hexagonal is that split made structural: **core = calculations + data; actions live in adapters behind ports.**
 
-### Application (use cases + ports)
-- [ ] Define the inbound port interface(s) for the use case(s) in `application/port/in`, named for intent (e.g. `PlaceOrderUseCase`).
-- [ ] Define outbound port interface(s) in `application/port/out`, expressed in domain terms, owned by the core.
-- [ ] Implement the use case in `application/usecase`, depending only on domain + outbound ports (constructor injection of `val` dependencies).
-- [ ] Put `@Transactional` on the use-case boundary; mark query-only use cases `readOnly = true`; avoid proxy self-invocation.
-- [ ] Throw application/domain exceptions (`NotFoundException`, `ConflictException`, …) on error paths; don't leak infrastructure exceptions.
+So the plan should push decisions into the pure domain and keep the impure edges thin. Two consequences to bake into every plan:
 
-### Driven adapters (persistence / external)
-- [ ] Implement outbound ports in `adapter/out`. Keep JPA entities separate from domain models; map explicitly at the boundary.
-- [ ] Use regular classes (not `data class`) for JPA entities; base `equals`/`hashCode` on a business key.
-- [ ] Add a Flyway/Liquibase migration for schema changes; don't rely on `ddl-auto` beyond `validate`. Avoid N+1 (fetch joins / entity graphs).
-- [ ] Wrap third-party clients (incl. any AI/LLM provider) behind the outbound port; set timeouts and fallback behavior.
+- When something in the core "needs the clock/DB/an external call," that's an **action** — plan it as an outbound port to inject, not a call baked into the domain.
+- Prefer **immutable values** — state changes modeled as new values, not in-place mutation. Call it out if a deliverable pushes toward mutable state so the executor doesn't default to it.
 
-### Driving adapters (web / messaging)
-- [ ] Implement a thin controller in `adapter/in/web` mapping HTTP ↔ use case calls — no business logic.
-- [ ] Use dedicated request/response DTOs; never expose entities or domain models. Validate request DTOs with `@Valid` + Bean Validation.
-- [ ] Follow `api-best-practices.md`: correct verbs/status codes, versioned path, pagination on collections, RFC 7807 error envelope, OpenAPI annotations — matching the contract the deliverable specifies.
-- [ ] Map domain/application exceptions to HTTP via `@RestControllerAdvice`; never leak stack traces or internals.
+The payoff is testability: a calculation needs no Spring context, which is exactly the bar the review enforces.
 
-### Wiring & config
-- [ ] Bind ports to adapters in the `config/` composition root. Bind configuration via `@ConfigurationProperties` data classes (no scattered `@Value`).
-- [ ] Keep secrets externalized; ensure `kotlin-spring` / `kotlin-jpa` compiler plugins are enabled.
-- [ ] Configure security for new endpoints: deny-by-default `SecurityFilterChain`, authorization at the use-case boundary.
+## Plan inside-out
 
-## Tests (write alongside, per `testing-best-practices.md`)
+Lay the plan out core → outward so dependencies point inward. For each layer, name the concrete pieces — don't write their bodies.
 
-- [ ] Unit-test domain and use cases with no Spring context; fake outbound ports; cover the deliverable's edge and failure cases, not just the happy path.
-- [ ] Slice-test controllers (`@WebMvcTest`) and persistence (`@DataJpaTest`); integration-test against Testcontainers, not H2.
-- [ ] Test transaction boundaries and lazy loading where relevant.
-- [ ] Make every test deterministic and self-contained (own setup/teardown, controlled time/randomness).
-- [ ] Ensure each **acceptance criterion** in the deliverable has a corresponding test that proves it.
+**Domain (innermost).** Entities / value objects under the feature's `domain/`, with their fields and invariants (what makes an instance invalid). Pure — calculations and data only, no framework. Name them.
 
-## Cohesion & hygiene
+**Application (use cases + ports).** The inbound use-case port(s) named for intent, and the outbound port(s) in domain terms (new vs. reuse). The use case orchestrates actions and delegates decisions to the domain — note the transaction boundary. Name each port and what it's responsible for, not its signature.
 
-- [ ] Keep the change scoped to this deliverable — no unrelated drive-by edits.
-- [ ] Names clear and consistent with the feature; no dead code, commented-out blocks, or leftover debug logging.
-- [ ] **No description comments.** Do not add KDoc/doc comments or inline comments that merely describe what a class, method, property, or test does — let clear names and signatures carry that. Only keep a comment when it captures non-obvious *intent*, a constraint, or a trade-off the code itself cannot express (e.g. why a specific SQL operator is required for correctness).
-- [ ] Update OpenAPI docs / README if the contract or behavior changed.
+**Driven adapters (persistence / external).** Which outbound ports get implemented here, the persistence shape (table/columns + migration note if the schema changes), and any third-party/AI client to wrap behind a port. Flag JPA-vs-domain-model separation as a requirement, not a detail.
+
+**Driving adapters (web / messaging).** The endpoint(s): verb + versioned path, request/response DTOs (shape, not code), status codes, and error cases mapped to the shared envelope. Controllers stay thin.
+
+**Wiring & config.** What gets bound in the composition root, any new `@ConfigurationProperties`, and the security posture for new endpoints (deny-by-default, authz at the use-case boundary).
+
+## Tests to plan for
+
+For each acceptance criterion, name the test that proves it and the layer:
+- Domain + use cases → Spring-free unit tests, outbound ports faked. Edge and failure paths, not just happy.
+- Controllers → slice tests; persistence → slice tests; integration → Testcontainers, not H2.
+
+Don't write the tests — list what must be covered so the executor can't skip a criterion.
+
+## Keep the plan lean
+
+- One deliverable only — no scope creep into adjacent work.
+- Name pieces and boundaries; defer bodies, naming of locals, and language mechanics to the executor.
+- Point to the reference docs for the rules rather than restating them.
+- Flag risks, reuse opportunities, and any decision the executor shouldn't make alone.
 
 ## Done when
 
-The deliverable's acceptance criteria are all met and covered by tests, the build and tests pass, dependencies point inward, no infrastructure concern leaked into domain/application, and the change is limited to this deliverable's stated scope.
+The plan covers one deliverable inside-out — domain, ports, adapters, endpoints, wiring, and the tests per acceptance criterion — names what to build and what to reuse, keeps the core pure with actions behind ports, and is lean enough for a coding agent to execute without re-deciding anything or duplicating what already exists.
