@@ -1,0 +1,14 @@
+target/
+.git/
+.gitignore
+.idea/
+*.iml
+.env
+.env.*
+!.env.example
+docs/
+README.md
+docker/
+scripts/
+*.log
+.DS_Store
