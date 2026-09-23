@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: bombus
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    # Render Blueprint setting (not always shown in the dashboard UI).
+    # Gives the JVM time to bind before the deploy is marked unhealthy.
+    healthCheckGracePeriodSeconds: 300
+    envVars:
+      - key: FLYWAY_ENABLED
+        value: "true"
+      - key: SPRING_MAIN_LAZY_INITIALIZATION
+        value: "true"
+      - key: SPRINGDOC_API_DOCS_ENABLED
+        value: "false"
+      - key: SPRINGDOC_SWAGGER_UI_ENABLED
+        value: "false"
+      # Set these in the Render dashboard (or as sync:false secrets):
+      # DB_URL, DB_USERNAME, DB_PASSWORD
+      # TWILIO_AUTH_TOKEN, TWILIO_PUBLIC_BASE_URL, OPENAI_API_KEY

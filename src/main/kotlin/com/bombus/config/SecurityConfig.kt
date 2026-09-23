@@ -20,6 +20,7 @@ class SecurityConfig {
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
+                it.requestMatchers("/health").permitAll()
                 it.requestMatchers("/v1/whatsapp/webhook").permitAll()
                 it.requestMatchers("/v1/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 it.anyRequest().denyAll()
