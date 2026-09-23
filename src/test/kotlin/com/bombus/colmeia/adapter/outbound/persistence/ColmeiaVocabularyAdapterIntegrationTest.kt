@@ -11,7 +11,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 
-// Vocabulary is seeded by migrations: 10 especie rows (V2) and 4 status_colmeia rows.
+// Vocabulary is seeded by migrations: 10 especie rows (V2) and 5 status_colmeia rows (V2+V3).
 @Testcontainers
 @Transactional
 @SpringBootTest(
@@ -45,13 +45,13 @@ class ColmeiaVocabularyAdapterIntegrationTest {
         val statuses = adapter.listStatuses()
 
         assertThat(statuses.map { it.name })
-            .containsExactly("desenvolvendo", "recuperando", "estavel", "perdida")
+            .containsExactly("desenvolvendo", "recuperando", "estavel", "perdida", "desconhecido")
     }
 
     companion object {
         @Container
         @ServiceConnection
         @JvmStatic
-        val postgres = PostgreSQLContainer("postgres:15")
+        val postgres = PostgreSQLContainer("postgres:17")
     }
 }

@@ -111,6 +111,6 @@ class SessaoChatAdapterIntegrationTest {
         @Container
         @ServiceConnection
         @JvmStatic
-        val postgres = PostgreSQLContainer("postgres:15")
+        val postgres = PostgreSQLContainer("postgres:17")
     }
 }

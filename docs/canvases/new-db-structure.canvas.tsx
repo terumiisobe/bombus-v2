@@ -108,7 +108,7 @@ const TABLES: TableDef[] = [
       { name: "id", type: "BIGINT", constraint: "identity PK" },
       { name: "name", type: "VARCHAR(50)", constraint: "NOT NULL UNIQUE" },
     ],
-    extras: ["Seeded names: desenvolvendo, recuperando, estavel, perdida."],
+    extras: ["Seeded names: desenvolvendo, recuperando, estavel, perdida, desconhecido."],
   },
   {
     id: "meliponario",
@@ -196,6 +196,7 @@ const STATUSES = [
   ["2", "recuperando", "Included in a plain count"],
   ["3", "estavel", "Included in a plain count"],
   ["4", "perdida", "Excluded unless the user asks for it"],
+  ["5", "desconhecido", "Included in a plain count"],
 ];
 
 const ROLE_ORDER: Role[] = ["identity", "hive", "reference", "conversation"];
@@ -296,7 +297,7 @@ export default function NewDbStructure() {
       <Stack gap={6}>
         <H1>New public schema</H1>
         <Text tone="secondary">
-          Target of the rebuild. Flyway applies V1 (tables) and V2 (species, statuses, and the chat-session unique constraint). Source: V1__baseline.sql and V2__reference_data.sql.
+          Target of the rebuild. Flyway applies V1 (tables), V2 (species, first four statuses, chat-session unique constraint), and V3 (status desconhecido). Source: V1__baseline.sql, V2__reference_data.sql, V3__status_desconhecido.sql.
         </Text>
       </Stack>
 
@@ -304,7 +305,7 @@ export default function NewDbStructure() {
         <Stat value="9" label="Tables in public" />
         <Stat value="8" label="Foreign keys" />
         <Stat value="10" label="Seeded species" />
-        <Stat value="4" label="Canonical statuses" tone="info" />
+        <Stat value="5" label="Canonical statuses" tone="info" />
       </Grid>
 
       <Stack gap={8}>
@@ -376,7 +377,7 @@ export default function NewDbStructure() {
         <Stack gap={8}>
           <H3>Seeded statuses</H3>
           <Text size="small" tone="tertiary">
-            V2 explicit ids. Legacy text values are mapped onto these four names during the copy.
+            V2 ids 1–4 plus V3 id 5. Legacy text values map onto these names during the copy. See docs/colmeia-status-vocabulary.md.
           </Text>
           <Table
             headers={["Id", "Name", "Plain count"]}

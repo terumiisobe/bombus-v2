@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:15
+    image: postgres:17
     container_name: bombus-postgres
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"

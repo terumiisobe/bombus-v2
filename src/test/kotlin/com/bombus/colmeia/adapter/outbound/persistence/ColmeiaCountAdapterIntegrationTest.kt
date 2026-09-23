@@ -15,7 +15,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 
-// Seeded statuses come from migrations: 1=desenvolvendo, 2=recuperando, 3=estavel, 4=perdida.
+// Seeded statuses come from migrations: 1=desenvolvendo, 2=recuperando, 3=estavel, 4=perdida, 5=desconhecido.
 @Testcontainers
 @Transactional
 @SpringBootTest(
@@ -169,6 +169,6 @@ class ColmeiaCountAdapterIntegrationTest {
         @Container
         @ServiceConnection
         @JvmStatic
-        val postgres = PostgreSQLContainer("postgres:15")
+        val postgres = PostgreSQLContainer("postgres:17")
     }
 }

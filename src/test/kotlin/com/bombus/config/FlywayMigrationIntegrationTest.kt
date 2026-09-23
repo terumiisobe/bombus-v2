@@ -32,7 +32,7 @@ class FlywayMigrationIntegrationTest {
             String::class.java,
         )
 
-        assertThat(applied).contains("1", "2")
+        assertThat(applied).contains("1", "2", "3")
     }
 
     @Test
@@ -66,6 +66,6 @@ class FlywayMigrationIntegrationTest {
         @Container
         @ServiceConnection
         @JvmStatic
-        val postgres = PostgreSQLContainer("postgres:15")
+        val postgres = PostgreSQLContainer("postgres:17")
     }
 }
