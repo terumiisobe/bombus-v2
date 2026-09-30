@@ -18,8 +18,17 @@ import com.bombus.chatbot.domain.ToolDefinition
 import com.bombus.colmeia.application.port.inbound.CountColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.CountColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.CountDimension
+import com.bombus.colmeia.application.port.inbound.CreateColmeiaCommand
+import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
+import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
+import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
+import com.bombus.colmeia.application.port.inbound.SoftDeleteColmeiaCommand
+import com.bombus.colmeia.application.port.inbound.SoftDeleteColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
+import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
 import com.bombus.colmeia.domain.ColmeiaCount
+import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.ColmeiaVocabulary
 import com.bombus.colmeia.domain.SpeciesCount
 import com.bombus.colmeia.domain.SpeciesRef
@@ -245,6 +254,10 @@ class HandleIncomingWhatsAppMessageServiceTest {
         val toolExecutor = ChatToolExecutor(
             countColmeias = count,
             vocabularyUseCase = FakeVocabulary,
+            listOwnedColmeias = NoopListOwned,
+            createColmeia = NoopCreate,
+            updateColmeia = NoopUpdate,
+            softDeleteColmeia = NoopSoftDelete,
             objectMapper = objectMapper,
         )
         return HandleIncomingWhatsAppMessageService(
@@ -304,6 +317,25 @@ class HandleIncomingWhatsAppMessageServiceTest {
             species = listOf(SpeciesRef(id = 1, abbreviation = "JT", commonName = "Jataí", scientificName = "Tetragonisca angustula")),
             statuses = listOf(StatusRef(id = 3, name = "estavel")),
         )
+    }
+
+    private object NoopListOwned : ListOwnedColmeiasUseCase {
+        override fun list(query: ListOwnedColmeiasQuery): List<ColmeiaSummary> = emptyList()
+    }
+
+    private object NoopCreate : CreateColmeiaUseCase {
+        override fun create(command: CreateColmeiaCommand): ColmeiaSummary =
+            error("create not used in this test")
+    }
+
+    private object NoopUpdate : UpdateColmeiaUseCase {
+        override fun update(command: UpdateColmeiaCommand): ColmeiaSummary =
+            error("update not used in this test")
+    }
+
+    private object NoopSoftDelete : SoftDeleteColmeiaUseCase {
+        override fun softDelete(command: SoftDeleteColmeiaCommand): ColmeiaSummary =
+            error("soft-delete not used in this test")
     }
 
     private companion object {

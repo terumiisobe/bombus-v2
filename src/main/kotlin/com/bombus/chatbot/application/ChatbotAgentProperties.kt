@@ -4,8 +4,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties(prefix = "chatbot.agent")
 data class ChatbotAgentProperties(
-    val maxToolRounds: Int = 2,
+    val maxToolRounds: Int = 3,
     val fallbackReply: String =
         "Desculpe, não consegui processar sua mensagem agora. " +
-            "Posso contar suas colmeias — experimente perguntar quantas você tem, por espécie ou por status.",
+            "Posso contar, listar, criar, atualizar ou marcar colmeias como perdidas — " +
+            "experimente perguntar quantas você tem ou listar suas colmeias.",
 )
