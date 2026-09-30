@@ -1,13 +1,14 @@
 package com.bombus.config
 
 import com.bombus.chatbot.application.ChatSessionProperties
+import com.bombus.chatbot.application.ChatbotAgentProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import java.time.Clock
 
 @Configuration
-@EnableConfigurationProperties(ChatSessionProperties::class)
+@EnableConfigurationProperties(ChatSessionProperties::class, ChatbotAgentProperties::class)
 class ChatbotConfig {
 
     @Bean
