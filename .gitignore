@@ -42,7 +42,13 @@ Thumbs.db
 
 #Config files
 .env
+.env.verify
 
 # Local-only ops / dumps (not published)
-scripts/
+/scripts/
 docs/colmeia-status-vocabulary.md
+
+# verify-bombus proof artifacts (keep directory via .gitkeep)
+.cursor/skills/verify-bombus/artifacts/**
+!.cursor/skills/verify-bombus/artifacts/.gitkeep
+.cursor/skills/verify-bombus/runs/
