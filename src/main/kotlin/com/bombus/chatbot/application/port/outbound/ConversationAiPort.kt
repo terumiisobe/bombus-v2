@@ -1,22 +1,15 @@
 package com.bombus.chatbot.application.port.outbound
 
-import com.bombus.chatbot.domain.ConversationContext
-import com.bombus.chatbot.domain.CountVocabulary
-import com.bombus.chatbot.domain.ParsedIntent
-import com.bombus.chatbot.domain.ReplyRequest
+import com.bombus.chatbot.domain.AgentCompletion
+import com.bombus.chatbot.domain.AgentMessage
+import com.bombus.chatbot.domain.ToolDefinition
 
 /**
- * Driven (outbound) port for the conversation AI: it understands a free-text message and
- * phrases a computed count in natural language. It never produces the count itself — the
- * number handed to [phraseReply] is trusted and must be restated verbatim.
+ * Driven (outbound) port for the conversation AI.
+ * Performs one model completion given messages and available tools.
+ * It never executes tools or invents counts — the application owns the tool loop.
  */
 interface ConversationAiPort {
 
-    fun parseIntent(
-        message: String,
-        context: ConversationContext,
-        vocabulary: CountVocabulary,
-    ): ParsedIntent
-
-    fun phraseReply(request: ReplyRequest): String
+    fun complete(messages: List<AgentMessage>, tools: List<ToolDefinition>): AgentCompletion
 }

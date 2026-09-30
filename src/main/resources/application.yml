@@ -27,6 +27,9 @@ chatbot:
     # Sliding session window: refreshed on every message. Expired sessions read as fresh.
     ttl: ${CHATBOT_SESSION_TTL:15m}
     max-context-messages: ${CHATBOT_SESSION_MAX_CONTEXT_MESSAGES:5}
+  agent:
+    # Max model complete() rounds per WhatsApp turn (tool calls + final reply).
+    max-tool-rounds: ${CHATBOT_AGENT_MAX_TOOL_ROUNDS:2}
 
 openai:
   api-key: ${OPENAI_API_KEY}
