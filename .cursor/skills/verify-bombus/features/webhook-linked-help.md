@@ -1,16 +1,16 @@
 # Webhook linked help
 
-A correctly signed message from a seeded, active WhatsApp user that asks for help (or is not understood as a count) receives the fixed pt-BR help reply describing how to ask for hive counts.
+A correctly signed message from a seeded, active WhatsApp user that the agent cannot process (or that asks what the bot can do) receives a pt-BR reply. When OpenAI fails, the app returns the configured agent fallback, which still steers the user toward counting questions.
 
 ## Sub-features
 
 - `linked-seed` requires an active `usuario_whatsapp` row for the sender.
-- `linked-help-reply` returns TwiML with the help sentence.
-- `linked-help-session` persists a `sessao_chat` row for that WhatsApp user after the turn.
+- `linked-fallback-or-help` returns TwiML with either a model help reply or `chatbot.agent.fallback-reply`.
+- `linked-session` persists a `sessao_chat` row for that WhatsApp user after the turn.
 
 ## How to get to it (user POV)
 
-- Linked customer sends WhatsApp text such as `ajuda`, `o que você faz?`, or anything the model classifies as HELP/UNKNOWN.
+- Linked customer sends WhatsApp text such as `ajuda` / `o que você faz?`, or any message while the model is unreachable.
 - Locally: seed the phone, then `post-webhook.sh` with that `From`.
 
 ## Driving it with curl
@@ -34,8 +34,7 @@ docker exec bombus-postgres psql -U bombus_usr -d bombus -c \
 
 - Env from `meta.env` exported (`BASE_URL`, `TWILIO_*`).
 
-- **Ask for help.** Run `.cursor/skills/verify-bombus/scripts/post-webhook.sh --from '+15550001234' --body 'ajuda' --out .cursor/skills/verify-bombus/artifacts/webhook-linked-help/response.xml --headers .cursor/skills/verify-bombus/artifacts/webhook-linked-help/headers.txt`. Observable: HTTP `200`; TwiML `<Message>` contains `Posso contar suas colmeias` (full help string from the service).
-- **With disposable OpenAI key.** Intent parse fails closed to UNKNOWN → same help reply. That is valid proof of the help path when OpenAI is unreachable.
+- **Ask for help / trigger fallback.** Run `.cursor/skills/verify-bombus/scripts/post-webhook.sh --from '+15550001234' --body 'ajuda' --out .cursor/skills/verify-bombus/artifacts/webhook-linked-help/response.xml --headers .cursor/skills/verify-bombus/artifacts/webhook-linked-help/headers.txt`. Observable: HTTP `200`; TwiML `<Message>` is non-empty pt-BR. With a disposable OpenAI key against the real API, expect the fallback containing `Posso contar suas colmeias` (from `ChatbotAgentProperties.fallbackReply`).
 - **Confirm session.** Query `sessao_chat` joined to `usuario_whatsapp` for `+15550001234` — expect a row with recent `last_message_at`.
 - **Proof.** Save XML, headers, SQL result snippet under `artifacts/webhook-linked-help/`.
 
@@ -43,5 +42,6 @@ docker exec bombus-postgres psql -U bombus_usr -d bombus -c \
 
 - Seed **after** first boot; seeding before Flyway yields `relation does not exist`.
 - Inactive (`active = false`) numbers behave as not-linked.
-- Do not confuse help TwiML with the not-linked support sentence.
+- Linked turns use a bounded OpenAI tool-calling loop (`count_colmeias` / `list_vocabulary`); there is no fixed HELP intent string anymore — assert on fallback or live model text, not the old hard-coded help sentence.
+- Do not confuse this TwiML with the not-linked support sentence.
 - Cleanup of seed rows is optional for disposable verify DBs; never delete `artifacts/`.

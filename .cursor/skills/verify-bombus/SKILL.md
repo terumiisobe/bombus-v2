@@ -91,7 +91,7 @@ Store proofs under `.cursor/skills/verify-bombus/artifacts/<feature-id>/` (named
 3. A log excerpt from `runs/<RUN_ID>/app.log` covering the request (Flyway lines for first boot; webhook reject warnings for signature cases).
 4. Side effects when relevant (e.g. `sessao_chat` row after a linked turn via `psql`).
 
-Standards: exercise the real webhook/health paths (not internal setters or test-only endpoints). Mock OpenAI only by pointing `OPENAI_BASE_URL` at a stub if you must; with a disposable fake key, intent parse failures fall back to the help reply (see `OpenAiConversationAdapter`). Never commit `.env.verify` or real secrets. Cleanup must not delete `artifacts/`.
+Standards: exercise the real webhook/health paths (not internal setters or test-only endpoints). Linked turns use a bounded OpenAI tool-calling loop (`count_colmeias` / `list_vocabulary`). Mock OpenAI only by pointing `OPENAI_BASE_URL` at a stub if you must; with a disposable fake key, completions fail closed to `chatbot.agent.fallback-reply` (still useful for linked-help/fallback proofs, not for count). Never commit `.env.verify` or real secrets. Cleanup must not delete `artifacts/`.
 
 ## Cleanup
 

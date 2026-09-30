@@ -45,5 +45,5 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Health](./health.md) covers the liveness JSON endpoint.
 - [Webhook signature reject](./webhook-signature-reject.md) covers missing/invalid `X-Twilio-Signature` → 403.
 - [Webhook not linked](./webhook-not-linked.md) covers a valid signature from an unknown phone → not-linked TwiML.
-- [Webhook linked help](./webhook-linked-help.md) covers a seeded active WhatsApp user receiving the help reply.
-- [Webhook linked count](./webhook-linked-count.md) covers counting colmeias for a seeded user (needs working OpenAI intent parse or an `OPENAI_BASE_URL` stub).
+- [Webhook linked help](./webhook-linked-help.md) covers a seeded active WhatsApp user receiving help or agent fallback reply.
+- [Webhook linked count](./webhook-linked-count.md) covers counting colmeias for a seeded user via the tool-calling agent (needs working OpenAI or an `OPENAI_BASE_URL` stub).
