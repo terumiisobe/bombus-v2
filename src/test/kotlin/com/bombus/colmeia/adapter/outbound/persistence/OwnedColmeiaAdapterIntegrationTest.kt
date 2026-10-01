@@ -37,8 +37,8 @@ class OwnedColmeiaAdapterIntegrationTest {
     @Autowired
     private lateinit var jdbcTemplate: JdbcTemplate
 
-    private val perdidaId: Long get() = statusLookup.findIdByName("perdida")!!
     private val estavelId: Long get() = statusLookup.findIdByName("estavel")!!
+    private val emDesenvolvimentoId: Long get() = statusLookup.findIdByName("em_desenvolvimento")!!
 
     @BeforeEach
     fun seed() {
@@ -47,45 +47,45 @@ class OwnedColmeiaAdapterIntegrationTest {
     }
 
     @Test
-    fun `nextFreeCode skips codes held by non-perdida and reuses after soft-delete status`() {
+    fun `hard delete frees code for reuse`() {
         val first = adapter.insert(
             code = 1,
             speciesId = 1,
             meliponarioId = MEL,
             startDate = Instant.parse("2026-01-01T00:00:00Z"),
-            initialStatusId = estavelId,
+            initialStatusId = emDesenvolvimentoId,
         )
-        assertThat(adapter.nextFreeCode(MEL, perdidaId)).isEqualTo(2)
+        assertThat(adapter.isCodeTaken(MEL, 1)).isTrue()
 
-        adapter.appendStatus(first.id, perdidaId, Instant.parse("2026-02-01T00:00:00Z"))
-        assertThat(adapter.isCodeTaken(MEL, 1, perdidaId)).isFalse()
-        assertThat(adapter.nextFreeCode(MEL, perdidaId)).isEqualTo(1)
+        assertThat(adapter.deleteByIdForOwner(OWNER, first.id)).isTrue()
+        assertThat(adapter.isCodeTaken(MEL, 1)).isFalse()
 
         val reused = adapter.insert(
             code = 1,
             speciesId = 2,
             meliponarioId = MEL,
-            startDate = Instant.parse("2026-03-01T00:00:00Z"),
+            startDate = null,
             initialStatusId = estavelId,
         )
         assertThat(reused.code).isEqualTo(1)
         assertThat(reused.id).isNotEqualTo(first.id)
-
-        val listed = adapter.listByOwner(OWNER, excludeStatusId = perdidaId, limit = 20, offset = 0)
-        assertThat(listed).extracting("id").containsExactly(reused.id)
+        assertThat(adapter.listByOwner(OWNER, excludeStatusId = null, limit = 20, offset = 0))
+            .extracting("id")
+            .containsExactly(reused.id)
     }
 
     @Test
-    fun `ownership isolates find and list`() {
+    fun `ownership isolates find by code and list`() {
         jdbcTemplate.update("INSERT INTO usuario (id, email, password_hash) VALUES (?, ?, ?)", OTHER, "p@x.test", "h")
         jdbcTemplate.update("INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)", MEL_OTHER, "B", "addr", OTHER)
 
-        val owned = adapter.insert(2, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+        adapter.insert(2, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
         adapter.insert(2, 1, MEL_OTHER, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
 
-        assertThat(adapter.findByIdForOwner(OWNER, owned.id)?.code).isEqualTo(2)
-        assertThat(adapter.findByIdForOwner(OTHER, owned.id)).isNull()
+        assertThat(adapter.findByCodeForOwner(OWNER, 2)).hasSize(1)
+        assertThat(adapter.findByCodeForOwner(OTHER, 2)).hasSize(1)
         assertThat(adapter.listByOwner(OWNER, null, 20, 0)).hasSize(1)
+        assertThat(adapter.deleteByIdForOwner(OTHER, adapter.findByCodeForOwner(OWNER, 2).first().id)).isFalse()
     }
 
     companion object {

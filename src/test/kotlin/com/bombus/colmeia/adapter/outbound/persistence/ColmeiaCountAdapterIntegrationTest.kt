@@ -15,7 +15,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 
-// Seeded statuses come from migrations: 1=desenvolvendo, 2=recuperando, 3=estavel, 4=perdida, 5=desconhecido.
+// Seeded statuses come from migrations: 1=em_desenvolvimento, 2=recuperando, 3=estavel, 4=perdida, 5=desconhecido.
 @Testcontainers
 @Transactional
 @SpringBootTest(

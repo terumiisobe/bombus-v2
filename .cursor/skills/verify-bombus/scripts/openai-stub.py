@@ -47,12 +47,14 @@ def completion(body):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("create_colmeia", {"speciesId": 1})]}
     elif any(k in text for k in ("atualizar", "mudar status")):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "statusId": 1})]}
-    elif any(k in text for k in ("perder", "excluir", "remover", "apagar", "soft")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("soft_delete_colmeia", {"code": 1})]}
+    elif any(k in text for k in ("confirmo", "pode excluir", "pode apagar", "sim, exclua")):
+        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("delete_colmeia", {"code": 1, "confirmed": True})]}
+    elif any(k in text for k in ("excluir", "remover", "apagar", "deletar")):
+        message = {"role": "assistant", "content": "Essa exclusão é definitiva e irreversível. Confirma que posso apagar a colmeia código 1?"}
     elif any(k in text for k in ("quantas", "contar")):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("count_colmeias", {"speciesId": None, "statusId": None, "groupBy": []})]}
     else:
-        message = {"role": "assistant", "content": "Posso contar, listar, criar, atualizar ou marcar colmeias como perdidas."}
+        message = {"role": "assistant", "content": "Posso contar, listar, criar, atualizar ou excluir colmeias."}
     return {"id": "chatcmpl-verify", "object": "chat.completion", "choices": [{"index": 0, "message": message, "finish_reason": "stop"}]}
 
 class Handler(BaseHTTPRequestHandler):

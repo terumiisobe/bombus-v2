@@ -47,4 +47,4 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Webhook not linked](./webhook-not-linked.md) covers a valid signature from an unknown phone → not-linked TwiML.
 - [Webhook linked help](./webhook-linked-help.md) covers a seeded active WhatsApp user receiving help or agent fallback reply.
 - [Webhook linked count](./webhook-linked-count.md) covers counting colmeias for a seeded user via the tool-calling agent (needs working OpenAI or an `OPENAI_BASE_URL` stub).
-- [Webhook linked colmeia CRUD](./webhook-linked-colmeia-crud.md) covers list/create/update/soft-delete (code freed after `perdida`) for a seeded linked user.
+- [Webhook linked colmeia CRUD](./webhook-linked-colmeia-crud.md) covers list/create/update/hard-delete (with confirmation) for a seeded linked user.

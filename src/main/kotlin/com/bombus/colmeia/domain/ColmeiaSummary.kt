@@ -3,8 +3,8 @@ package com.bombus.colmeia.domain
 import java.time.Instant
 
 /**
- * Concise hive snapshot for WhatsApp list/create/update replies.
- * Location is intentionally omitted (bot does not manage it).
+ * Hive snapshot. WhatsApp tool payloads expose code + species common name + status name only;
+ * [id] and other fields stay internal for persistence/use cases.
  */
 data class ColmeiaSummary(
     val id: Long,

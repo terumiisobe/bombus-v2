@@ -9,31 +9,24 @@ import com.bombus.colmeia.domain.ColmeiaCommandError
 import com.bombus.colmeia.domain.ColmeiaSummary
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.Clock
 
 @Service
 class CreateColmeiaService(
     private val ownedColmeiaPort: OwnedColmeiaPort,
     private val vocabularyPort: ColmeiaVocabularyPort,
     private val statusLookupPort: StatusColmeiaLookupPort,
-    private val properties: ColmeiaCountProperties,
-    private val clock: Clock,
 ) : CreateColmeiaUseCase {
 
     @Transactional
     override fun create(command: CreateColmeiaCommand): ColmeiaSummary {
-        val meliponarioId = resolveMeliponario(command.userId, command.meliponarioId)
+        val meliponarioId = resolveMeliponario(command.userId)
         requireKnownSpecies(command.speciesId)
 
-        val excludeStatusId = statusLookupPort.findIdByName(properties.defaultExcludedStatus)
-        val code = when (val requested = command.code) {
-            null -> ownedColmeiaPort.nextFreeCode(meliponarioId, excludeStatusId)
-            else -> {
-                if (requested < 1) throw ColmeiaCommandError.CodeTaken()
-                if (ownedColmeiaPort.isCodeTaken(meliponarioId, requested, excludeStatusId)) {
-                    throw ColmeiaCommandError.CodeTaken()
-                }
-                requested
+        val code = command.code
+        if (code != null) {
+            if (code < 1) throw ColmeiaCommandError.CodeTaken()
+            if (ownedColmeiaPort.isCodeTaken(meliponarioId, code)) {
+                throw ColmeiaCommandError.CodeTaken()
             }
         }
 
@@ -42,22 +35,19 @@ class CreateColmeiaService(
             ?: throw ColmeiaCommandError.UnknownStatus()
         requireKnownStatus(statusId)
 
-        val startDate = command.startDate ?: clock.instant()
         return ownedColmeiaPort.insert(
             code = code,
             speciesId = command.speciesId,
             meliponarioId = meliponarioId,
-            startDate = startDate,
+            startDate = command.startDate,
             initialStatusId = statusId,
         )
     }
 
-    private fun resolveMeliponario(userId: Long, requested: Long?): Long {
+    private fun resolveMeliponario(userId: Long): Long {
         val owned = ownedColmeiaPort.listMeliponarioIdsByOwner(userId)
         if (owned.isEmpty()) throw ColmeiaCommandError.NoMeliponario()
-        if (requested == null) return owned.first()
-        if (requested !in owned) throw ColmeiaCommandError.MeliponarioNotOwned()
-        return requested
+        return owned.first()
     }
 
     private fun requireKnownSpecies(speciesId: Long) {
@@ -73,6 +63,6 @@ class CreateColmeiaService(
     }
 
     companion object {
-        const val DEFAULT_CREATE_STATUS = "estavel"
+        const val DEFAULT_CREATE_STATUS = "em_desenvolvimento"
     }
 }

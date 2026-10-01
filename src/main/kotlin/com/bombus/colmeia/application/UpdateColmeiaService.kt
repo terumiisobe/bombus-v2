@@ -19,45 +19,17 @@ class UpdateColmeiaService(
 
     @Transactional
     override fun update(command: UpdateColmeiaCommand): ColmeiaSummary {
-        val existing = resolveOwned(command.userId, command.colmeiaId, command.code, command.meliponarioId)
-        command.speciesId?.let { speciesId ->
-            if (vocabularyPort.listSpecies().none { it.id == speciesId }) {
-                throw ColmeiaCommandError.UnknownSpecies()
-            }
+        val existing = resolveByCode(command.userId, command.code)
+        if (vocabularyPort.listStatuses().none { it.id == command.statusId }) {
+            throw ColmeiaCommandError.UnknownStatus()
         }
-        command.statusId?.let { statusId ->
-            if (vocabularyPort.listStatuses().none { it.id == statusId }) {
-                throw ColmeiaCommandError.UnknownStatus()
-            }
-        }
-
-        var current = existing
-        if (command.speciesId != null || command.startDate != null) {
-            current = ownedColmeiaPort.update(
-                colmeiaId = existing.id,
-                speciesId = command.speciesId,
-                startDate = command.startDate,
-            ) ?: throw ColmeiaCommandError.ColmeiaNotFound()
-        }
-        if (command.statusId != null && command.statusId != existing.statusId) {
-            current = ownedColmeiaPort.appendStatus(existing.id, command.statusId, clock.instant())
-                ?: throw ColmeiaCommandError.ColmeiaNotFound()
-        }
-        return current
+        if (command.statusId == existing.statusId) return existing
+        return ownedColmeiaPort.appendStatus(existing.id, command.statusId, clock.instant())
+            ?: throw ColmeiaCommandError.ColmeiaNotFound()
     }
 
-    private fun resolveOwned(
-        userId: Long,
-        colmeiaId: Long?,
-        code: Int?,
-        meliponarioId: Long?,
-    ): ColmeiaSummary {
-        if (colmeiaId != null) {
-            return ownedColmeiaPort.findByIdForOwner(userId, colmeiaId)
-                ?: throw ColmeiaCommandError.ColmeiaNotFound()
-        }
-        if (code == null) throw ColmeiaCommandError.ColmeiaNotFound()
-        val matches = ownedColmeiaPort.findByCodeForOwner(userId, code, meliponarioId)
+    private fun resolveByCode(userId: Long, code: Int): ColmeiaSummary {
+        val matches = ownedColmeiaPort.findByCodeForOwner(userId, code)
         return when (matches.size) {
             0 -> throw ColmeiaCommandError.ColmeiaNotFound()
             1 -> matches.first()

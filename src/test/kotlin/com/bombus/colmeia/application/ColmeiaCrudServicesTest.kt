@@ -1,8 +1,8 @@
 package com.bombus.colmeia.application
 
 import com.bombus.colmeia.application.port.inbound.CreateColmeiaCommand
+import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
-import com.bombus.colmeia.application.port.inbound.SoftDeleteColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
 import com.bombus.colmeia.application.port.outbound.ColmeiaVocabularyPort
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
@@ -17,6 +17,9 @@ import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
 class ColmeiaCrudServicesTest {
 
     private val now = Instant.parse("2026-09-30T12:00:00Z")
@@ -24,29 +27,26 @@ class ColmeiaCrudServicesTest {
     private val properties = ColmeiaCountProperties(defaultExcludedStatus = "perdida")
 
     @Test
-    fun `create assigns next free code default status and startDate`() {
-        val port = FakeOwnedPort().apply {
-            meliponarioIds = listOf(10L)
-            nextCode = 3
-        }
-        val service = CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup, properties, clock)
+    fun `create defaults status to em_desenvolvimento and leaves code startDate null`() {
+        val port = FakeOwnedPort().apply { meliponarioIds = listOf(10L) }
+        val service = CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup)
 
         val created = service.create(CreateColmeiaCommand(userId = 1L, speciesId = 1L))
 
-        assertEquals(3, created.code)
-        assertEquals(STATUS_ESTAVEL, created.statusId)
-        assertEquals(now, created.startDate)
+        assertNull(created.code)
+        assertNull(created.startDate)
+        assertEquals(STATUS_EM_DESENVOLVIMENTO, created.statusId)
         assertEquals(10L, created.meliponarioId)
         assertEquals(1, port.inserts.size)
     }
 
     @Test
-    fun `create rejects taken user code among non-perdida`() {
+    fun `create rejects taken user code`() {
         val port = FakeOwnedPort().apply {
             meliponarioIds = listOf(10L)
             takenCodes += 5
         }
-        val service = CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup, properties, clock)
+        val service = CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup)
 
         assertFailsWith<ColmeiaCommandError.CodeTaken> {
             service.create(CreateColmeiaCommand(userId = 1L, speciesId = 1L, code = 5))
@@ -66,35 +66,34 @@ class ColmeiaCrudServicesTest {
     }
 
     @Test
-    fun `softDelete appends perdida and is idempotent when already lost`() {
+    fun `delete hard-deletes by code`() {
         val port = FakeOwnedPort().apply {
-            byId[100L] = SAMPLE.copy(statusId = STATUS_ESTAVEL, statusName = "estavel")
+            byCode[7] = listOf(SAMPLE)
+            byId[100L] = SAMPLE
         }
-        val service = SoftDeleteColmeiaService(port, FakeStatusLookup, properties, clock)
+        val service = DeleteColmeiaService(port)
 
-        val first = service.softDelete(SoftDeleteColmeiaCommand(userId = 1L, colmeiaId = 100L))
-        assertEquals(STATUS_PERDIDA, first.statusId)
-        assertEquals(1, port.appendedStatuses.size)
-
-        port.byId[100L] = first
-        val second = service.softDelete(SoftDeleteColmeiaCommand(userId = 1L, colmeiaId = 100L))
-        assertEquals(STATUS_PERDIDA, second.statusId)
-        assertEquals(1, port.appendedStatuses.size)
+        val deleted = service.delete(DeleteColmeiaCommand(userId = 1L, code = 7))
+        assertEquals(7, deleted.code)
+        assertEquals("Jataí", deleted.speciesCommonName)
+        assertTrue(port.deletedIds.contains(100L))
     }
 
     @Test
-    fun `update changes species and status`() {
+    fun `update changes status only by code`() {
         val port = FakeOwnedPort().apply {
+            byCode[7] = listOf(SAMPLE)
             byId[100L] = SAMPLE
         }
         val service = UpdateColmeiaService(port, FakeVocabulary, clock)
 
         val updated = service.update(
-            UpdateColmeiaCommand(userId = 1L, colmeiaId = 100L, speciesId = 2L, statusId = STATUS_DESENVOLVENDO),
+            UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
         )
 
-        assertEquals(2L, updated.speciesId)
-        assertEquals(STATUS_DESENVOLVENDO, updated.statusId)
+        assertEquals(1L, updated.speciesId)
+        assertEquals(STATUS_ESTAVEL, updated.statusId)
+        assertEquals(1, port.appendedStatuses.size)
     }
 
     @Test
@@ -105,19 +104,19 @@ class ColmeiaCrudServicesTest {
         val service = UpdateColmeiaService(port, FakeVocabulary, clock)
 
         assertFailsWith<ColmeiaCommandError.AmbiguousCode> {
-            service.update(UpdateColmeiaCommand(userId = 1L, code = 7))
+            service.update(UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL))
         }
     }
 
     private class FakeOwnedPort : OwnedColmeiaPort {
         var meliponarioIds: List<Long> = emptyList()
-        var nextCode: Int = 1
         var takenCodes: MutableSet<Int> = mutableSetOf()
         var lastExcludeStatusId: Long? = null
         val byId = mutableMapOf<Long, ColmeiaSummary>()
         val byCode = mutableMapOf<Int, List<ColmeiaSummary>>()
         val inserts = mutableListOf<ColmeiaSummary>()
         val appendedStatuses = mutableListOf<Pair<Long, Long>>()
+        val deletedIds = mutableListOf<Long>()
         private var seq = 200L
 
         override fun listMeliponarioIdsByOwner(userId: Long): List<Long> = meliponarioIds
@@ -132,28 +131,17 @@ class ColmeiaCrudServicesTest {
             return emptyList()
         }
 
-        override fun findByIdForOwner(userId: Long, colmeiaId: Long): ColmeiaSummary? = byId[colmeiaId]
-
-        override fun findByCodeForOwner(
-            userId: Long,
-            code: Int,
-            meliponarioId: Long?,
-        ): List<ColmeiaSummary> {
-            val all = byCode[code].orEmpty()
-            return if (meliponarioId == null) all else all.filter { it.meliponarioId == meliponarioId }
-        }
-
-        override fun nextFreeCode(meliponarioId: Long, excludeStatusId: Long?): Int = nextCode
+        override fun findByCodeForOwner(userId: Long, code: Int): List<ColmeiaSummary> =
+            byCode[code].orEmpty()
 
         override fun isCodeTaken(
             meliponarioId: Long,
             code: Int,
-            excludeStatusId: Long?,
             exceptColmeiaId: Long?,
         ): Boolean = code in takenCodes
 
         override fun insert(
-            code: Int,
+            code: Int?,
             speciesId: Long,
             meliponarioId: Long,
             startDate: Instant?,
@@ -168,21 +156,11 @@ class ColmeiaCrudServicesTest {
                 meliponarioId = meliponarioId,
                 startDate = startDate,
                 statusId = initialStatusId,
-                statusName = if (initialStatusId == STATUS_ESTAVEL) "estavel" else "other",
+                statusName = if (initialStatusId == STATUS_EM_DESENVOLVIMENTO) "em_desenvolvimento" else "other",
             )
             inserts += summary
             byId[summary.id] = summary
             return summary
-        }
-
-        override fun update(colmeiaId: Long, speciesId: Long?, startDate: Instant?): ColmeiaSummary? {
-            val current = byId[colmeiaId] ?: return null
-            val next = current.copy(
-                speciesId = speciesId ?: current.speciesId,
-                startDate = startDate ?: current.startDate,
-            )
-            byId[colmeiaId] = next
-            return next
         }
 
         override fun appendStatus(colmeiaId: Long, statusId: Long, recordedAt: Instant): ColmeiaSummary? {
@@ -192,13 +170,20 @@ class ColmeiaCrudServicesTest {
                 statusId = statusId,
                 statusName = when (statusId) {
                     STATUS_PERDIDA -> "perdida"
-                    STATUS_DESENVOLVENDO -> "desenvolvendo"
+                    STATUS_EM_DESENVOLVIMENTO -> "em_desenvolvimento"
                     STATUS_ESTAVEL -> "estavel"
                     else -> "other"
                 },
             )
             byId[colmeiaId] = next
             return next
+        }
+
+        override fun deleteByIdForOwner(userId: Long, colmeiaId: Long): Boolean {
+            if (!byId.containsKey(colmeiaId)) return false
+            deletedIds += colmeiaId
+            byId.remove(colmeiaId)
+            return true
         }
     }
 
@@ -209,7 +194,7 @@ class ColmeiaCrudServicesTest {
         )
 
         override fun listStatuses(): List<StatusRef> = listOf(
-            StatusRef(STATUS_DESENVOLVENDO, "desenvolvendo"),
+            StatusRef(STATUS_EM_DESENVOLVIMENTO, "em_desenvolvimento"),
             StatusRef(STATUS_ESTAVEL, "estavel"),
             StatusRef(STATUS_PERDIDA, "perdida"),
         )
@@ -219,12 +204,13 @@ class ColmeiaCrudServicesTest {
         override fun findIdByName(name: String): Long? = when (name) {
             "perdida" -> STATUS_PERDIDA
             "estavel" -> STATUS_ESTAVEL
+            "em_desenvolvimento" -> STATUS_EM_DESENVOLVIMENTO
             else -> null
         }
     }
 
     private companion object {
-        const val STATUS_DESENVOLVENDO = 1L
+        const val STATUS_EM_DESENVOLVIMENTO = 1L
         const val STATUS_ESTAVEL = 3L
         const val STATUS_PERDIDA = 4L
 
@@ -236,8 +222,8 @@ class ColmeiaCrudServicesTest {
             speciesCommonName = "Jataí",
             meliponarioId = 10L,
             startDate = Instant.parse("2026-01-01T00:00:00Z"),
-            statusId = STATUS_ESTAVEL,
-            statusName = "estavel",
+            statusId = STATUS_EM_DESENVOLVIMENTO,
+            statusName = "em_desenvolvimento",
         )
     }
 }

@@ -124,7 +124,7 @@ class CountColmeiasServiceTest {
     @Test
     fun `per-status breakdown includes perdida and the sem status group`() {
         val statuses = listOf(
-            StatusCount(statusId = 1, statusName = "desenvolvendo", count = 1),
+            StatusCount(statusId = 1, statusName = "em_desenvolvimento", count = 1),
             StatusCount(statusId = 3, statusName = "estavel", count = 1),
             StatusCount(statusId = perdidaId, statusName = "perdida", count = 2),
             StatusCount(statusId = null, statusName = null, count = 1),

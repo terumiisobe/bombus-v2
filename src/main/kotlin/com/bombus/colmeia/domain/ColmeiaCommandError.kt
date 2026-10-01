@@ -8,9 +8,10 @@ sealed class ColmeiaCommandError(message: String) : Exception(message) {
     class NoMeliponario : ColmeiaCommandError("Customer has no meliponário")
     class MeliponarioNotOwned : ColmeiaCommandError("Meliponário not owned by customer")
     class ColmeiaNotFound : ColmeiaCommandError("Colmeia not found for this customer")
-    class AmbiguousCode : ColmeiaCommandError("Code matches multiple colmeias; specify meliponarioId")
-    class CodeTaken : ColmeiaCommandError("Code already in use by a non-perdida colmeia in this meliponário")
+    class AmbiguousCode : ColmeiaCommandError("Code matches multiple colmeias")
+    class CodeTaken : ColmeiaCommandError("Code already in use in this meliponário")
     class UnknownSpecies : ColmeiaCommandError("Unknown speciesId")
     class UnknownStatus : ColmeiaCommandError("Unknown statusId")
     class InvalidLimit : ColmeiaCommandError("limit must be between 1 and 50")
+    class ConfirmationRequired : ColmeiaCommandError("Delete requires confirmed=true after user confirmation")
 }

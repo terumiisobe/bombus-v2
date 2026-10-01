@@ -6,5 +6,5 @@ object ChatToolNames {
     const val LIST_COLMEIAS = "list_colmeias"
     const val CREATE_COLMEIA = "create_colmeia"
     const val UPDATE_COLMEIA = "update_colmeia"
-    const val SOFT_DELETE_COLMEIA = "soft_delete_colmeia"
+    const val DELETE_COLMEIA = "delete_colmeia"
 }

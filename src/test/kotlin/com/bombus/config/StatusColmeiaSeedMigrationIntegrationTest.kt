@@ -35,7 +35,7 @@ class StatusColmeiaSeedMigrationIntegrationTest {
         )
 
         assertThat(names).containsExactly(
-            "desenvolvendo",
+            "em_desenvolvimento",
             "recuperando",
             "estavel",
             "perdida",

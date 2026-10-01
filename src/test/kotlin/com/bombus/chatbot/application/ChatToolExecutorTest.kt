@@ -1,23 +1,25 @@
 package com.bombus.chatbot.application
 
+import com.bombus.chatbot.domain.AssistantToolCall
 import com.bombus.colmeia.application.port.inbound.CountColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.CountColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.CountDimension
 import com.bombus.colmeia.application.port.inbound.CreateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
+import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.DeletedColmeia
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
-import com.bombus.colmeia.application.port.inbound.SoftDeleteColmeiaCommand
-import com.bombus.colmeia.application.port.inbound.SoftDeleteColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
 import com.bombus.colmeia.domain.ColmeiaCount
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.ColmeiaVocabulary
+import com.bombus.colmeia.domain.SpeciesCount
 import com.bombus.colmeia.domain.SpeciesRef
 import com.bombus.colmeia.domain.StatusRef
-import com.bombus.chatbot.domain.AssistantToolCall
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.time.Instant
 import kotlin.test.Test
@@ -31,14 +33,14 @@ class ChatToolExecutorTest {
     private val listOwned = RecordingList()
     private val create = RecordingCreate()
     private val update = RecordingUpdate()
-    private val softDelete = RecordingSoftDelete()
+    private val delete = RecordingDelete()
     private val executor = ChatToolExecutor(
         countColmeias = count,
         vocabularyUseCase = FakeVocabulary,
         listOwnedColmeias = listOwned,
         createColmeia = create,
         updateColmeia = update,
-        softDeleteColmeia = softDelete,
+        deleteColmeia = delete,
         objectMapper = objectMapper,
     )
 
@@ -99,7 +101,8 @@ class ChatToolExecutorTest {
     }
 
     @Test
-    fun `list_colmeias returns compact items`() {
+    fun `list_colmeias returns compact items without internal id`() {
+        count.result = ColmeiaCount(total = 1)
         listOwned.items = listOf(SAMPLE)
         val result = executor.execute(
             userId = 42L,
@@ -111,13 +114,37 @@ class ChatToolExecutorTest {
         )
 
         val json = objectMapper.readTree(result.contentJson)
+        assertEquals("list", json.path("mode").asText())
         assertEquals(1, json.path("count").asInt())
         assertEquals(7, json.path("items").path(0).path("code").asInt())
-        assertEquals("JT", json.path("items").path(0).path("species").asText())
+        assertEquals("Jataí", json.path("items").path(0).path("species").asText())
+        assertTrue(json.path("items").path(0).path("id").isMissingNode)
         assertEquals(
             ListOwnedColmeiasQuery(userId = 42L, limit = 5),
             listOwned.lastQuery,
         )
+    }
+
+    @Test
+    fun `list_colmeias returns species count when more than 10 hives`() {
+        count.result = ColmeiaCount(
+            total = 11,
+            perSpecies = listOf(SpeciesCount(1, "JT", "Jataí", 11)),
+        )
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_lc",
+                name = ChatToolNames.LIST_COLMEIAS,
+                argumentsJson = "{}",
+            ),
+        )
+
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals("species_count", json.path("mode").asText())
+        assertEquals(11, json.path("total").asInt())
+        assertEquals("Jataí", json.path("perSpecies").path(0).path("commonName").asText())
+        assertEquals(null, listOwned.lastQuery)
     }
 
     @Test
@@ -137,25 +164,36 @@ class ChatToolExecutorTest {
             create.lastCommand,
         )
         val json = objectMapper.readTree(result.contentJson)
-        assertEquals(100L, json.path("colmeia").path("id").asLong())
+        assertTrue(json.path("colmeia").path("id").isMissingNode)
+        assertEquals("Jataí", json.path("colmeia").path("species").asText())
     }
 
     @Test
-    fun `soft_delete_colmeia returns softDeleted flag`() {
-        softDelete.result = SAMPLE.copy(statusId = 4, statusName = "perdida")
+    fun `delete_colmeia requires confirmed true then hard deletes`() {
+        val denied = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_d0",
+                name = ChatToolNames.DELETE_COLMEIA,
+                argumentsJson = """{"code":7,"confirmed":false}""",
+            ),
+        )
+        assertEquals("ConfirmationRequired", objectMapper.readTree(denied.contentJson).path("error").asText())
+
+        delete.result = DeletedColmeia(code = 7, speciesCommonName = "Jataí", statusName = "estavel")
         val result = executor.execute(
             userId = 42L,
             call = AssistantToolCall(
                 id = "call_d",
-                name = ChatToolNames.SOFT_DELETE_COLMEIA,
-                argumentsJson = """{"code":7}""",
+                name = ChatToolNames.DELETE_COLMEIA,
+                argumentsJson = """{"code":7,"confirmed":true}""",
             ),
         )
 
-        assertEquals(SoftDeleteColmeiaCommand(userId = 42L, code = 7), softDelete.lastCommand)
+        assertEquals(DeleteColmeiaCommand(userId = 42L, code = 7), delete.lastCommand)
         val json = objectMapper.readTree(result.contentJson)
-        assertTrue(json.path("softDeleted").asBoolean())
-        assertEquals("perdida", json.path("colmeia").path("status").asText())
+        assertTrue(json.path("deleted").asBoolean())
+        assertEquals(7, json.path("code").asInt())
     }
 
     @Test
@@ -168,7 +206,7 @@ class ChatToolExecutorTest {
                 ChatToolNames.LIST_COLMEIAS,
                 ChatToolNames.CREATE_COLMEIA,
                 ChatToolNames.UPDATE_COLMEIA,
-                ChatToolNames.SOFT_DELETE_COLMEIA,
+                ChatToolNames.DELETE_COLMEIA,
             ),
             names,
         )
@@ -211,12 +249,12 @@ class ChatToolExecutorTest {
         override fun update(command: UpdateColmeiaCommand): ColmeiaSummary = result
     }
 
-    private class RecordingSoftDelete : SoftDeleteColmeiaUseCase {
-        lateinit var result: ColmeiaSummary
-        var lastCommand: SoftDeleteColmeiaCommand? = null
+    private class RecordingDelete : DeleteColmeiaUseCase {
+        lateinit var result: DeletedColmeia
+        var lastCommand: DeleteColmeiaCommand? = null
             private set
 
-        override fun softDelete(command: SoftDeleteColmeiaCommand): ColmeiaSummary {
+        override fun delete(command: DeleteColmeiaCommand): DeletedColmeia {
             lastCommand = command
             return result
         }

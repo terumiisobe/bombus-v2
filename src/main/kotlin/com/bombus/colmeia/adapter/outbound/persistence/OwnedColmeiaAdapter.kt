@@ -17,7 +17,7 @@ class OwnedColmeiaAdapter(
 
     override fun listMeliponarioIdsByOwner(userId: Long): List<Long> =
         jdbc.queryForList(
-            "SELECT id FROM meliponario WHERE owner_id = :userId ORDER BY id",
+            "SELECT id FROM meliponario WHERE owner_id = :userId",
             MapSqlParameterSource("userId", userId),
             Long::class.java,
         )
@@ -38,46 +38,21 @@ class OwnedColmeiaAdapter(
             SUMMARY_MAPPER,
         )
 
-    override fun findByIdForOwner(userId: Long, colmeiaId: Long): ColmeiaSummary? =
-        jdbc.query(
-            FIND_BY_ID_SQL,
-            MapSqlParameterSource()
-                .addValue("userId", userId)
-                .addValue("colmeiaId", colmeiaId),
-            SUMMARY_MAPPER,
-        ).firstOrNull()
-
     override fun findByCodeForOwner(
         userId: Long,
         code: Int,
-        meliponarioId: Long?,
     ): List<ColmeiaSummary> =
         jdbc.query(
             FIND_BY_CODE_SQL,
             MapSqlParameterSource()
                 .addValue("userId", userId)
-                .addValue("code", code)
-                .addValue("meliponarioId", meliponarioId),
+                .addValue("code", code),
             SUMMARY_MAPPER,
         )
-
-    override fun nextFreeCode(meliponarioId: Long, excludeStatusId: Long?): Int {
-        val used = jdbc.queryForList(
-            USED_CODES_SQL,
-            MapSqlParameterSource()
-                .addValue("meliponarioId", meliponarioId)
-                .addValue("excludeStatusId", excludeStatusId),
-            Int::class.java,
-        ).toSortedSet()
-        var candidate = 1
-        while (candidate in used) candidate++
-        return candidate
-    }
 
     override fun isCodeTaken(
         meliponarioId: Long,
         code: Int,
-        excludeStatusId: Long?,
         exceptColmeiaId: Long?,
     ): Boolean {
         val count = jdbc.queryForObject(
@@ -85,7 +60,6 @@ class OwnedColmeiaAdapter(
             MapSqlParameterSource()
                 .addValue("meliponarioId", meliponarioId)
                 .addValue("code", code)
-                .addValue("excludeStatusId", excludeStatusId)
                 .addValue("exceptColmeiaId", exceptColmeiaId),
             Long::class.java,
         ) ?: 0L
@@ -93,7 +67,7 @@ class OwnedColmeiaAdapter(
     }
 
     override fun insert(
-        code: Int,
+        code: Int?,
         speciesId: Long,
         meliponarioId: Long,
         startDate: Instant?,
@@ -105,7 +79,8 @@ class OwnedColmeiaAdapter(
                 "INSERT INTO colmeia (code, species_id, meliponario_id, start_date) VALUES (?, ?, ?, ?)",
                 arrayOf("id"),
             )
-            ps.setInt(1, code)
+            if (code == null) ps.setObject(1, null)
+            else ps.setInt(1, code)
             ps.setLong(2, speciesId)
             ps.setLong(3, meliponarioId)
             if (startDate == null) ps.setTimestamp(4, null)
@@ -114,35 +89,12 @@ class OwnedColmeiaAdapter(
         }, keyHolder)
         val id = keyHolder.key!!.toLong()
         jdbc.update(
-            "INSERT INTO colmeia_status_historico (colmeia_id, status_id, recorded_at) VALUES (:id, :statusId, COALESCE(:at, NOW()))",
+            "INSERT INTO colmeia_status_historico (colmeia_id, status_id, recorded_at) VALUES (:id, :statusId, NOW())",
             MapSqlParameterSource()
                 .addValue("id", id)
-                .addValue("statusId", initialStatusId)
-                .addValue("at", startDate?.let { Timestamp.from(it) }),
+                .addValue("statusId", initialStatusId),
         )
         return findByIdUnchecked(id)!!
-    }
-
-    override fun update(
-        colmeiaId: Long,
-        speciesId: Long?,
-        startDate: Instant?,
-    ): ColmeiaSummary? {
-        if (speciesId == null && startDate == null) return findByIdUnchecked(colmeiaId)
-        jdbc.update(
-            """
-            UPDATE colmeia SET
-              species_id = COALESCE(:speciesId, species_id),
-              start_date = CASE WHEN :setStartDate THEN :startDate ELSE start_date END
-            WHERE id = :id
-            """.trimIndent(),
-            MapSqlParameterSource()
-                .addValue("id", colmeiaId)
-                .addValue("speciesId", speciesId)
-                .addValue("setStartDate", startDate != null)
-                .addValue("startDate", startDate?.let { Timestamp.from(it) }),
-        )
-        return findByIdUnchecked(colmeiaId)
     }
 
     override fun appendStatus(colmeiaId: Long, statusId: Long, recordedAt: Instant): ColmeiaSummary? {
@@ -159,6 +111,22 @@ class OwnedColmeiaAdapter(
         )
         if (updated == 0) return null
         return findByIdUnchecked(colmeiaId)
+    }
+
+    override fun deleteByIdForOwner(userId: Long, colmeiaId: Long): Boolean {
+        val updated = jdbc.update(
+            """
+            DELETE FROM colmeia c
+            USING meliponario m
+            WHERE c.id = :colmeiaId
+              AND c.meliponario_id = m.id
+              AND m.owner_id = :userId
+            """.trimIndent(),
+            MapSqlParameterSource()
+                .addValue("colmeiaId", colmeiaId)
+                .addValue("userId", userId),
+        )
+        return updated > 0
     }
 
     private fun findByIdUnchecked(colmeiaId: Long): ColmeiaSummary? =
@@ -199,13 +167,8 @@ class OwnedColmeiaAdapter(
             $SUMMARY_SELECT
             WHERE m.owner_id = :userId
               AND (CAST(:excludeStatusId AS BIGINT) IS NULL OR cur.status_id IS DISTINCT FROM CAST(:excludeStatusId AS BIGINT))
-            ORDER BY c.meliponario_id, c.code NULLS LAST, c.id
+            ORDER BY c.code NULLS LAST, c.id
             LIMIT :limit OFFSET :offset
-        """.trimIndent()
-
-        val FIND_BY_ID_SQL = """
-            $SUMMARY_SELECT
-            WHERE m.owner_id = :userId AND c.id = :colmeiaId
         """.trimIndent()
 
         val FIND_BY_ID_UNSCOPED_SQL = """
@@ -217,39 +180,15 @@ class OwnedColmeiaAdapter(
             $SUMMARY_SELECT
             WHERE m.owner_id = :userId
               AND c.code = :code
-              AND (CAST(:meliponarioId AS BIGINT) IS NULL OR c.meliponario_id = CAST(:meliponarioId AS BIGINT))
             ORDER BY c.id
-        """.trimIndent()
-
-        val USED_CODES_SQL = """
-            SELECT c.code
-            FROM colmeia c
-            LEFT JOIN LATERAL (
-                SELECT h.status_id
-                FROM colmeia_status_historico h
-                WHERE h.colmeia_id = c.id
-                ORDER BY h.recorded_at DESC, h.id DESC
-                LIMIT 1
-            ) cur ON true
-            WHERE c.meliponario_id = :meliponarioId
-              AND c.code IS NOT NULL
-              AND (CAST(:excludeStatusId AS BIGINT) IS NULL OR cur.status_id IS DISTINCT FROM CAST(:excludeStatusId AS BIGINT))
         """.trimIndent()
 
         val CODE_TAKEN_SQL = """
             SELECT COUNT(*)
             FROM colmeia c
-            LEFT JOIN LATERAL (
-                SELECT h.status_id
-                FROM colmeia_status_historico h
-                WHERE h.colmeia_id = c.id
-                ORDER BY h.recorded_at DESC, h.id DESC
-                LIMIT 1
-            ) cur ON true
             WHERE c.meliponario_id = :meliponarioId
               AND c.code = :code
               AND (CAST(:exceptColmeiaId AS BIGINT) IS NULL OR c.id IS DISTINCT FROM CAST(:exceptColmeiaId AS BIGINT))
-              AND (CAST(:excludeStatusId AS BIGINT) IS NULL OR cur.status_id IS DISTINCT FROM CAST(:excludeStatusId AS BIGINT))
         """.trimIndent()
 
         val SUMMARY_MAPPER = RowMapper { rs, _ ->

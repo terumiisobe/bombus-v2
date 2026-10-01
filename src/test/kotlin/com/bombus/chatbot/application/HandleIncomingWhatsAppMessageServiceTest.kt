@@ -23,8 +23,9 @@ import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
-import com.bombus.colmeia.application.port.inbound.SoftDeleteColmeiaCommand
-import com.bombus.colmeia.application.port.inbound.SoftDeleteColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
+import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.DeletedColmeia
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
 import com.bombus.colmeia.domain.ColmeiaCount
@@ -257,7 +258,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
             listOwnedColmeias = NoopListOwned,
             createColmeia = NoopCreate,
             updateColmeia = NoopUpdate,
-            softDeleteColmeia = NoopSoftDelete,
+            deleteColmeia = NoopDelete,
             objectMapper = objectMapper,
         )
         return HandleIncomingWhatsAppMessageService(
@@ -333,9 +334,9 @@ class HandleIncomingWhatsAppMessageServiceTest {
             error("update not used in this test")
     }
 
-    private object NoopSoftDelete : SoftDeleteColmeiaUseCase {
-        override fun softDelete(command: SoftDeleteColmeiaCommand): ColmeiaSummary =
-            error("soft-delete not used in this test")
+    private object NoopDelete : DeleteColmeiaUseCase {
+        override fun delete(command: DeleteColmeiaCommand): DeletedColmeia =
+            error("delete not used in this test")
     }
 
     private companion object {

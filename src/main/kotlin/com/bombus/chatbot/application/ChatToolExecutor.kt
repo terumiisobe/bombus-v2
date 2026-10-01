@@ -8,11 +8,11 @@ import com.bombus.colmeia.application.port.inbound.CountColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.CountDimension
 import com.bombus.colmeia.application.port.inbound.CreateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
+import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
-import com.bombus.colmeia.application.port.inbound.SoftDeleteColmeiaCommand
-import com.bombus.colmeia.application.port.inbound.SoftDeleteColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
 import com.bombus.colmeia.domain.ColmeiaCommandError
@@ -33,7 +33,7 @@ class ChatToolExecutor(
     private val listOwnedColmeias: ListOwnedColmeiasUseCase,
     private val createColmeia: CreateColmeiaUseCase,
     private val updateColmeia: UpdateColmeiaUseCase,
-    private val softDeleteColmeia: SoftDeleteColmeiaUseCase,
+    private val deleteColmeia: DeleteColmeiaUseCase,
     private val objectMapper: ObjectMapper,
 ) {
 
@@ -43,7 +43,7 @@ class ChatToolExecutor(
         LIST_COLMEIAS_DEF,
         CREATE_COLMEIA_DEF,
         UPDATE_COLMEIA_DEF,
-        SOFT_DELETE_COLMEIA_DEF,
+        DELETE_COLMEIA_DEF,
     )
 
     fun execute(userId: Long, call: AssistantToolCall): ToolResultMessage {
@@ -54,7 +54,7 @@ class ChatToolExecutor(
                 ChatToolNames.LIST_COLMEIAS -> executeList(userId, call.argumentsJson)
                 ChatToolNames.CREATE_COLMEIA -> executeCreate(userId, call.argumentsJson)
                 ChatToolNames.UPDATE_COLMEIA -> executeUpdate(userId, call.argumentsJson)
-                ChatToolNames.SOFT_DELETE_COLMEIA -> executeSoftDelete(userId, call.argumentsJson)
+                ChatToolNames.DELETE_COLMEIA -> executeDelete(userId, call.argumentsJson)
                 else -> errorJson("unknown_tool", "Unknown tool: ${call.name}")
             }
         } catch (ex: ColmeiaCommandError) {
@@ -144,16 +144,40 @@ class ChatToolExecutor(
 
     private fun executeList(userId: Long, argumentsJson: String): String {
         val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
+        val includeLost = args.path("includeLost").asBoolean(false)
+        val total = countColmeias.count(CountColmeiasQuery(userId = userId)).total
+        if (!includeLost && total > SPECIES_COUNT_THRESHOLD) {
+            val breakdown = countColmeias.count(
+                CountColmeiasQuery(
+                    userId = userId,
+                    groupBy = setOf(CountDimension.SPECIES),
+                ),
+            )
+            return objectMapper.writeValueAsString(
+                mapOf(
+                    "mode" to "species_count",
+                    "total" to breakdown.total,
+                    "perSpecies" to (breakdown.perSpecies?.map {
+                        mapOf(
+                            "commonName" to it.commonName,
+                            "count" to it.count,
+                        )
+                    } ?: emptyList()),
+                ),
+            )
+        }
+
         val items = listOwnedColmeias.list(
             ListOwnedColmeiasQuery(
                 userId = userId,
-                includeLost = args.path("includeLost").asBoolean(false),
+                includeLost = includeLost,
                 limit = args.optionalInt("limit") ?: ListOwnedColmeiasQuery.DEFAULT_LIMIT,
                 offset = args.optionalInt("offset") ?: 0,
             ),
         )
         return objectMapper.writeValueAsString(
             mapOf(
+                "mode" to "list",
                 "count" to items.size,
                 "items" to items.map { it.toCompactMap() },
             ),
@@ -170,7 +194,6 @@ class ChatToolExecutor(
                 speciesId = speciesId,
                 statusId = args.optionalLong("statusId"),
                 code = args.optionalInt("code"),
-                meliponarioId = args.optionalLong("meliponarioId"),
                 startDate = args.optionalInstant("startDate"),
             ),
         )
@@ -179,48 +202,42 @@ class ChatToolExecutor(
 
     private fun executeUpdate(userId: Long, argumentsJson: String): String {
         val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
+        val code = args.optionalInt("code")
+            ?: return errorJson("missing_code", "code is required")
+        val statusId = args.optionalLong("statusId")
+            ?: return errorJson("missing_statusId", "statusId is required")
         val updated = updateColmeia.update(
             UpdateColmeiaCommand(
                 userId = userId,
-                colmeiaId = args.optionalLong("colmeiaId"),
-                code = args.optionalInt("code"),
-                meliponarioId = args.optionalLong("meliponarioId"),
-                speciesId = args.optionalLong("speciesId"),
-                statusId = args.optionalLong("statusId"),
-                startDate = args.optionalInstant("startDate"),
+                code = code,
+                statusId = statusId,
             ),
         )
         return objectMapper.writeValueAsString(mapOf("colmeia" to updated.toCompactMap()))
     }
 
-    private fun executeSoftDelete(userId: Long, argumentsJson: String): String {
+    private fun executeDelete(userId: Long, argumentsJson: String): String {
         val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
-        val deleted = softDeleteColmeia.softDelete(
-            SoftDeleteColmeiaCommand(
-                userId = userId,
-                colmeiaId = args.optionalLong("colmeiaId"),
-                code = args.optionalInt("code"),
-                meliponarioId = args.optionalLong("meliponarioId"),
-            ),
-        )
+        if (!args.path("confirmed").asBoolean(false)) {
+            throw ColmeiaCommandError.ConfirmationRequired()
+        }
+        val code = args.optionalInt("code")
+            ?: return errorJson("missing_code", "code is required")
+        val deleted = deleteColmeia.delete(DeleteColmeiaCommand(userId = userId, code = code))
         return objectMapper.writeValueAsString(
             mapOf(
-                "softDeleted" to true,
-                "colmeia" to deleted.toCompactMap(),
+                "deleted" to true,
+                "code" to deleted.code,
+                "species" to deleted.speciesCommonName,
+                "status" to deleted.statusName,
             ),
         )
     }
 
     private fun ColmeiaSummary.toCompactMap(): Map<String, Any?> = mapOf(
-        "id" to id,
         "code" to code,
-        "speciesId" to speciesId,
-        "species" to speciesAbbreviation,
-        "speciesName" to speciesCommonName,
-        "statusId" to statusId,
+        "species" to speciesCommonName,
         "status" to statusName,
-        "meliponarioId" to meliponarioId,
-        "startDate" to startDate?.toString(),
     )
 
     private fun errorJson(code: String, message: String): String =
@@ -254,6 +271,8 @@ class ChatToolExecutor(
     }
 
     private companion object {
+        const val SPECIES_COUNT_THRESHOLD = 10
+
         val COUNT_COLMEIAS_DEF = ToolDefinition(
             name = ChatToolNames.COUNT_COLMEIAS,
             description =
@@ -287,18 +306,19 @@ class ChatToolExecutor(
         val LIST_COLMEIAS_DEF = ToolDefinition(
             name = ChatToolNames.LIST_COLMEIAS,
             description =
-                "List the customer's colmeias concisely (code, species, status, id). " +
-                    "Excludes perdida by default. Use limit/offset for short WhatsApp replies.",
+                "List the customer's colmeias (code, species common name, status). " +
+                    "If the customer has more than 10 hives, returns per-species counts instead of a row list. " +
+                    "Excludes perdida by default.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
                     "includeLost" to mapOf(
                         "type" to "boolean",
-                        "description" to "If true, include soft-deleted (perdida) hives",
+                        "description" to "If true, include hives currently status perdida",
                     ),
                     "limit" to mapOf(
                         "type" to listOf("integer", "null"),
-                        "description" to "Max items (1-50, default 20)",
+                        "description" to "Max items when listing rows (1-50, default 20)",
                     ),
                     "offset" to mapOf(
                         "type" to listOf("integer", "null"),
@@ -313,16 +333,24 @@ class ChatToolExecutor(
             name = ChatToolNames.CREATE_COLMEIA,
             description =
                 "Create a hive for the linked customer. speciesId required (from list_vocabulary). " +
-                    "code auto-assigned next free (non-perdida) unless provided. " +
-                    "status defaults to estavel. meliponario defaults to customer's oldest. startDate defaults to now.",
+                    "code and startDate only if the user provided them (otherwise null). " +
+                    "status defaults to em_desenvolvimento.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
                     "speciesId" to mapOf("type" to "integer", "description" to "Required species id"),
-                    "statusId" to mapOf("type" to listOf("integer", "null"), "description" to "Optional status id; default estavel"),
-                    "code" to mapOf("type" to listOf("integer", "null"), "description" to "Optional hive code; must be free among non-perdida"),
-                    "meliponarioId" to mapOf("type" to listOf("integer", "null"), "description" to "Optional owned meliponário id"),
-                    "startDate" to mapOf("type" to listOf("string", "null"), "description" to "Optional ISO-8601 instant"),
+                    "statusId" to mapOf(
+                        "type" to listOf("integer", "null"),
+                        "description" to "Optional status id; default em_desenvolvimento",
+                    ),
+                    "code" to mapOf(
+                        "type" to listOf("integer", "null"),
+                        "description" to "Hive code if the user provided one; otherwise null",
+                    ),
+                    "startDate" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to "ISO-8601 instant if the user provided one; otherwise null",
+                    ),
                 ),
                 "required" to listOf("speciesId"),
                 "additionalProperties" to false,
@@ -332,34 +360,34 @@ class ChatToolExecutor(
         val UPDATE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.UPDATE_COLMEIA,
             description =
-                "Update an owned hive. Identify with colmeiaId or code (+ meliponarioId if ambiguous). " +
-                    "May change speciesId, statusId (appends history), and/or startDate. Code is not changed.",
+                "Update an owned hive status. Identify by code. Only statusId is mutable (appends history). " +
+                    "Species, code, meliponário, and startDate stay fixed.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
-                    "colmeiaId" to mapOf("type" to listOf("integer", "null"), "description" to "Hive id when known"),
-                    "code" to mapOf("type" to listOf("integer", "null"), "description" to "Hive code if id unknown"),
-                    "meliponarioId" to mapOf("type" to listOf("integer", "null"), "description" to "Disambiguate code across meliponários"),
-                    "speciesId" to mapOf("type" to listOf("integer", "null"), "description" to "New species id"),
-                    "statusId" to mapOf("type" to listOf("integer", "null"), "description" to "New status id (appends history)"),
-                    "startDate" to mapOf("type" to listOf("string", "null"), "description" to "New ISO-8601 startDate"),
+                    "code" to mapOf("type" to "integer", "description" to "Hive code"),
+                    "statusId" to mapOf("type" to "integer", "description" to "New status id (appends history)"),
                 ),
+                "required" to listOf("code", "statusId"),
                 "additionalProperties" to false,
             ),
         )
 
-        val SOFT_DELETE_COLMEIA_DEF = ToolDefinition(
-            name = ChatToolNames.SOFT_DELETE_COLMEIA,
+        val DELETE_COLMEIA_DEF = ToolDefinition(
+            name = ChatToolNames.DELETE_COLMEIA,
             description =
-                "Soft-delete an owned hive by appending status perdida (never hard-delete). " +
-                    "Frees the hive code for reuse. Identify with colmeiaId or code. Idempotent if already perdida.",
+                "Permanently delete an owned hive by code (hard delete, irreversible). " +
+                    "Only call after the user explicitly confirmed. Pass confirmed=true.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
-                    "colmeiaId" to mapOf("type" to listOf("integer", "null"), "description" to "Hive id when known"),
-                    "code" to mapOf("type" to listOf("integer", "null"), "description" to "Hive code if id unknown"),
-                    "meliponarioId" to mapOf("type" to listOf("integer", "null"), "description" to "Disambiguate code"),
+                    "code" to mapOf("type" to "integer", "description" to "Hive code to delete"),
+                    "confirmed" to mapOf(
+                        "type" to "boolean",
+                        "description" to "Must be true after user confirmed this final delete",
+                    ),
                 ),
+                "required" to listOf("code", "confirmed"),
                 "additionalProperties" to false,
             ),
         )
