@@ -71,6 +71,8 @@ class OpenAiConversationAdapterTest {
             .containsIgnoringCase("nunca invente")
             .contains("pt-BR")
             .contains("speciesLabel")
+            .contains("speciesScientificName")
+            .contains("excludedStatusLabel")
     }
 
     @Test

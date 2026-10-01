@@ -3,6 +3,7 @@ package com.bombus.chatbot.application
 import com.bombus.chatbot.domain.AssistantToolCall
 import com.bombus.chatbot.domain.ToolDefinition
 import com.bombus.chatbot.domain.ToolResultMessage
+import com.bombus.colmeia.application.ColmeiaCountProperties
 import com.bombus.colmeia.application.port.inbound.CountColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.CountColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.CountDimension
@@ -17,6 +18,7 @@ import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
 import com.bombus.colmeia.domain.ColmeiaCommandError
 import com.bombus.colmeia.domain.ColmeiaSummary
+import com.bombus.colmeia.domain.SpeciesRef
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.stereotype.Component
@@ -35,6 +37,7 @@ class ChatToolExecutor(
     private val updateColmeia: UpdateColmeiaUseCase,
     private val deleteColmeia: DeleteColmeiaUseCase,
     private val objectMapper: ObjectMapper,
+    private val countProperties: ColmeiaCountProperties,
 ) {
 
     fun definitions(): List<ToolDefinition> = listOf(
@@ -81,6 +84,16 @@ class ChatToolExecutor(
             ?.toSet()
             .orEmpty()
 
+        val vocabulary = vocabularyUseCase.list()
+        val species: SpeciesRef? = speciesId?.let { id ->
+            vocabulary.species.firstOrNull { it.id == id }
+                ?: return errorJson("unknown_species_id", "Unknown speciesId: $id")
+        }
+        val statusLabel = statusId?.let { id ->
+            vocabulary.statuses.firstOrNull { it.id == id }?.name
+                ?: return errorJson("unknown_status_id", "Unknown statusId: $id")
+        }
+
         val count = countColmeias.count(
             CountColmeiasQuery(
                 userId = userId,
@@ -90,16 +103,15 @@ class ChatToolExecutor(
             ),
         )
 
-        val vocabulary = vocabularyUseCase.list()
-        val speciesLabel = speciesId?.let { id -> vocabulary.species.firstOrNull { it.id == id }?.commonName }
-        val statusLabel = statusId?.let { id -> vocabulary.statuses.firstOrNull { it.id == id }?.name }
-
         val payload = linkedMapOf<String, Any?>(
             "total" to count.total,
             "speciesId" to speciesId,
             "statusId" to statusId,
-            "speciesLabel" to speciesLabel,
+            "speciesLabel" to species?.commonName,
+            "speciesScientificName" to species?.scientificName,
+            "speciesAbbreviation" to species?.abbreviation,
             "statusLabel" to statusLabel,
+            "excludedStatusLabel" to if (statusId == null) countProperties.defaultExcludedStatus else null,
             "groupBy" to groupBy.map { it.name },
         )
         count.perSpecies?.let { breakdown ->
@@ -276,13 +288,21 @@ class ChatToolExecutor(
         val COUNT_COLMEIAS_DEF = ToolDefinition(
             name = ChatToolNames.COUNT_COLMEIAS,
             description =
-                "Count the customer's hives (colmeias). Optional speciesId/statusId filter by vocabulary ids. " +
-                    "Optional groupBy SPECIES and/or STATUS for breakdowns. Numbers are authoritative — restate them.",
+                "Count the customer's hives (colmeias). Pass speciesId/statusId only from list_vocabulary " +
+                    "(match the user's words to vocabulary entries first). Never invent ids or reuse a count " +
+                    "total/ordinal from chat as an id. Optional groupBy SPECIES and/or STATUS for breakdowns. " +
+                    "Numbers and labels in the tool JSON are authoritative — restate them.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
-                    "speciesId" to mapOf("type" to listOf("integer", "null"), "description" to "Species id from list_vocabulary, or null"),
-                    "statusId" to mapOf("type" to listOf("integer", "null"), "description" to "Status id from list_vocabulary, or null"),
+                    "speciesId" to mapOf(
+                        "type" to listOf("integer", "null"),
+                        "description" to "Species id from list_vocabulary only, or null",
+                    ),
+                    "statusId" to mapOf(
+                        "type" to listOf("integer", "null"),
+                        "description" to "Status id from list_vocabulary only, or null",
+                    ),
                     "groupBy" to mapOf(
                         "type" to "array",
                         "items" to mapOf("type" to "string", "enum" to listOf("SPECIES", "STATUS")),
