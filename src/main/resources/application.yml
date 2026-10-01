@@ -29,7 +29,7 @@ chatbot:
     max-context-messages: ${CHATBOT_SESSION_MAX_CONTEXT_MESSAGES:5}
   agent:
     # Max model complete() rounds per WhatsApp turn (tool calls + final reply).
-    max-tool-rounds: ${CHATBOT_AGENT_MAX_TOOL_ROUNDS:2}
+    max-tool-rounds: ${CHATBOT_AGENT_MAX_TOOL_ROUNDS:3}
 
 openai:
   api-key: ${OPENAI_API_KEY}

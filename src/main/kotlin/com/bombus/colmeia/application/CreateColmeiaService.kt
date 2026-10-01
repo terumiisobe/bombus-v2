@@ -1,0 +1,68 @@
+package com.bombus.colmeia.application
+
+import com.bombus.colmeia.application.port.inbound.CreateColmeiaCommand
+import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
+import com.bombus.colmeia.application.port.outbound.ColmeiaVocabularyPort
+import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
+import com.bombus.colmeia.application.port.outbound.StatusColmeiaLookupPort
+import com.bombus.colmeia.domain.ColmeiaCommandError
+import com.bombus.colmeia.domain.ColmeiaSummary
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+
+@Service
+class CreateColmeiaService(
+    private val ownedColmeiaPort: OwnedColmeiaPort,
+    private val vocabularyPort: ColmeiaVocabularyPort,
+    private val statusLookupPort: StatusColmeiaLookupPort,
+) : CreateColmeiaUseCase {
+
+    @Transactional
+    override fun create(command: CreateColmeiaCommand): ColmeiaSummary {
+        val meliponarioId = resolveMeliponario(command.userId)
+        requireKnownSpecies(command.speciesId)
+
+        val code = command.code
+        if (code != null) {
+            if (code < 1) throw ColmeiaCommandError.CodeTaken()
+            if (ownedColmeiaPort.isCodeTaken(meliponarioId, code)) {
+                throw ColmeiaCommandError.CodeTaken()
+            }
+        }
+
+        val statusId = command.statusId
+            ?: statusLookupPort.findIdByName(DEFAULT_CREATE_STATUS)
+            ?: throw ColmeiaCommandError.UnknownStatus()
+        requireKnownStatus(statusId)
+
+        return ownedColmeiaPort.insert(
+            code = code,
+            speciesId = command.speciesId,
+            meliponarioId = meliponarioId,
+            startDate = command.startDate,
+            initialStatusId = statusId,
+        )
+    }
+
+    private fun resolveMeliponario(userId: Long): Long {
+        val owned = ownedColmeiaPort.listMeliponarioIdsByOwner(userId)
+        if (owned.isEmpty()) throw ColmeiaCommandError.NoMeliponario()
+        return owned.first()
+    }
+
+    private fun requireKnownSpecies(speciesId: Long) {
+        if (vocabularyPort.listSpecies().none { it.id == speciesId }) {
+            throw ColmeiaCommandError.UnknownSpecies()
+        }
+    }
+
+    private fun requireKnownStatus(statusId: Long) {
+        if (vocabularyPort.listStatuses().none { it.id == statusId }) {
+            throw ColmeiaCommandError.UnknownStatus()
+        }
+    }
+
+    companion object {
+        const val DEFAULT_CREATE_STATUS = "em_desenvolvimento"
+    }
+}
