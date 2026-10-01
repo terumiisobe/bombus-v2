@@ -17,6 +17,9 @@ import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
 import com.bombus.colmeia.domain.ColmeiaCommandError
 import com.bombus.colmeia.domain.ColmeiaSummary
+import com.bombus.colmeia.domain.ColmeiaVocabulary
+import com.bombus.colmeia.domain.SpeciesRef
+import com.bombus.colmeia.domain.StatusRef
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.stereotype.Component
@@ -25,6 +28,7 @@ import java.time.Instant
 /**
  * Builds tool definitions and executes tool calls against colmeia use cases.
  * Counts and hive mutations come only from use cases; the model phrases replies.
+ * Species/status are named at the tool boundary; ids stay internal to use cases.
  */
 @Component
 class ChatToolExecutor(
@@ -67,8 +71,14 @@ class ChatToolExecutor(
 
     private fun executeCount(userId: Long, argumentsJson: String): String {
         val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
-        val speciesId = args.optionalLong("speciesId")
-        val statusId = args.optionalLong("statusId")
+        val vocabulary = vocabularyUseCase.list()
+        val speciesOutcome = resolveOptionalSpecies(args.optionalString("species"), vocabulary)
+        if (speciesOutcome is ResolveOutcome.Failed) return speciesOutcome.errorJson
+        val statusOutcome = resolveOptionalStatus(args.optionalString("status"), vocabulary)
+        if (statusOutcome is ResolveOutcome.Failed) return statusOutcome.errorJson
+        val speciesRef = (speciesOutcome as ResolveOutcome.Ok).value
+        val statusRef = (statusOutcome as ResolveOutcome.Ok).value
+
         val groupBy = args.path("groupBy")
             .takeIf { it.isArray }
             ?.mapNotNull { node ->
@@ -84,30 +94,23 @@ class ChatToolExecutor(
         val count = countColmeias.count(
             CountColmeiasQuery(
                 userId = userId,
-                speciesId = speciesId,
-                statusId = statusId,
+                speciesId = speciesRef?.id,
+                statusId = statusRef?.id,
                 groupBy = groupBy,
             ),
         )
 
-        val vocabulary = vocabularyUseCase.list()
-        val speciesLabel = speciesId?.let { id -> vocabulary.species.firstOrNull { it.id == id }?.commonName }
-        val statusLabel = statusId?.let { id -> vocabulary.statuses.firstOrNull { it.id == id }?.name }
-
         val payload = linkedMapOf<String, Any?>(
             "total" to count.total,
-            "speciesId" to speciesId,
-            "statusId" to statusId,
-            "speciesLabel" to speciesLabel,
-            "statusLabel" to statusLabel,
+            "species" to speciesRef?.commonName,
+            "status" to statusRef?.name,
             "groupBy" to groupBy.map { it.name },
         )
         count.perSpecies?.let { breakdown ->
             payload["perSpecies"] = breakdown.map {
                 mapOf(
-                    "speciesId" to it.speciesId,
-                    "abbreviation" to it.abbreviation,
                     "commonName" to it.commonName,
+                    "abbreviation" to it.abbreviation,
                     "count" to it.count,
                 )
             }
@@ -115,8 +118,7 @@ class ChatToolExecutor(
         count.perStatus?.let { breakdown ->
             payload["perStatus"] = breakdown.map {
                 mapOf(
-                    "statusId" to it.statusId,
-                    "statusName" to it.statusName,
+                    "status" to it.statusName,
                     "count" to it.count,
                 )
             }
@@ -129,14 +131,13 @@ class ChatToolExecutor(
         val payload = mapOf(
             "species" to vocabulary.species.map {
                 mapOf(
-                    "id" to it.id,
-                    "abbreviation" to it.abbreviation,
                     "commonName" to it.commonName,
+                    "abbreviation" to it.abbreviation,
                     "scientificName" to it.scientificName,
                 )
             },
             "statuses" to vocabulary.statuses.map {
-                mapOf("id" to it.id, "name" to it.name)
+                mapOf("name" to it.name)
             },
         )
         return objectMapper.writeValueAsString(payload)
@@ -186,13 +187,37 @@ class ChatToolExecutor(
 
     private fun executeCreate(userId: Long, argumentsJson: String): String {
         val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
-        val speciesId = args.optionalLong("speciesId")
-            ?: return errorJson("missing_speciesId", "speciesId is required")
+        val speciesRaw = args.optionalString("species")
+            ?: return errorJson("missing_species", "species (common name) is required")
+        val vocabulary = vocabularyUseCase.list()
+        val species = when (val resolved = ChatVocabularyResolver.resolveSpecies(speciesRaw, vocabulary.species)) {
+            is ChatVocabularyResolver.SpeciesResolution.Found -> resolved.species
+            is ChatVocabularyResolver.SpeciesResolution.Unknown ->
+                return errorJson(
+                    "unknown_species",
+                    "Unknown species '$speciesRaw'. Valid common names: ${resolved.validCommonNames.joinToString()}",
+                )
+            is ChatVocabularyResolver.SpeciesResolution.Ambiguous ->
+                return ambiguousSpeciesJson(resolved.input, resolved.matches)
+        }
+        val statusRaw = args.optionalString("status")
+        val statusId = if (statusRaw == null) {
+            null
+        } else {
+            when (val resolved = ChatVocabularyResolver.resolveStatus(statusRaw, vocabulary.statuses)) {
+                is ChatVocabularyResolver.StatusResolution.Found -> resolved.status.id
+                is ChatVocabularyResolver.StatusResolution.Unknown ->
+                    return errorJson(
+                        "unknown_status",
+                        "Unknown status '$statusRaw'. Valid names: ${resolved.validNames.joinToString()}",
+                    )
+            }
+        }
         val created = createColmeia.create(
             CreateColmeiaCommand(
                 userId = userId,
-                speciesId = speciesId,
-                statusId = args.optionalLong("statusId"),
+                speciesId = species.id,
+                statusId = statusId,
                 code = args.optionalInt("code"),
                 startDate = args.optionalInstant("startDate"),
             ),
@@ -204,13 +229,22 @@ class ChatToolExecutor(
         val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
         val code = args.optionalInt("code")
             ?: return errorJson("missing_code", "code is required")
-        val statusId = args.optionalLong("statusId")
-            ?: return errorJson("missing_statusId", "statusId is required")
+        val statusRaw = args.optionalString("status")
+            ?: return errorJson("missing_status", "status (name) is required")
+        val vocabulary = vocabularyUseCase.list()
+        val status = when (val resolved = ChatVocabularyResolver.resolveStatus(statusRaw, vocabulary.statuses)) {
+            is ChatVocabularyResolver.StatusResolution.Found -> resolved.status
+            is ChatVocabularyResolver.StatusResolution.Unknown ->
+                return errorJson(
+                    "unknown_status",
+                    "Unknown status '$statusRaw'. Valid names: ${resolved.validNames.joinToString()}",
+                )
+        }
         val updated = updateColmeia.update(
             UpdateColmeiaCommand(
                 userId = userId,
                 code = code,
-                statusId = statusId,
+                statusId = status.id,
             ),
         )
         return objectMapper.writeValueAsString(mapOf("colmeia" to updated.toCompactMap()))
@@ -240,15 +274,64 @@ class ChatToolExecutor(
         "status" to statusName,
     )
 
+    private sealed class ResolveOutcome<out T> {
+        data class Ok<T>(val value: T) : ResolveOutcome<T>()
+        data class Failed(val errorJson: String) : ResolveOutcome<Nothing>()
+    }
+
+    private fun resolveOptionalSpecies(
+        raw: String?,
+        vocabulary: ColmeiaVocabulary,
+    ): ResolveOutcome<SpeciesRef?> {
+        if (raw == null) return ResolveOutcome.Ok(null)
+        return when (val resolved = ChatVocabularyResolver.resolveSpecies(raw, vocabulary.species)) {
+            is ChatVocabularyResolver.SpeciesResolution.Found -> ResolveOutcome.Ok(resolved.species)
+            is ChatVocabularyResolver.SpeciesResolution.Unknown ->
+                ResolveOutcome.Failed(
+                    errorJson(
+                        "unknown_species",
+                        "Unknown species '$raw'. Valid common names: ${resolved.validCommonNames.joinToString()}",
+                    ),
+                )
+            is ChatVocabularyResolver.SpeciesResolution.Ambiguous ->
+                ResolveOutcome.Failed(ambiguousSpeciesJson(resolved.input, resolved.matches))
+        }
+    }
+
+    private fun resolveOptionalStatus(
+        raw: String?,
+        vocabulary: ColmeiaVocabulary,
+    ): ResolveOutcome<StatusRef?> {
+        if (raw == null) return ResolveOutcome.Ok(null)
+        return when (val resolved = ChatVocabularyResolver.resolveStatus(raw, vocabulary.statuses)) {
+            is ChatVocabularyResolver.StatusResolution.Found -> ResolveOutcome.Ok(resolved.status)
+            is ChatVocabularyResolver.StatusResolution.Unknown ->
+                ResolveOutcome.Failed(
+                    errorJson(
+                        "unknown_status",
+                        "Unknown status '$raw'. Valid names: ${resolved.validNames.joinToString()}",
+                    ),
+                )
+        }
+    }
+
+    private fun ambiguousSpeciesJson(input: String, matches: List<SpeciesRef>): String {
+        val detail = matches.joinToString { "${it.commonName} (${it.abbreviation} / ${it.scientificName})" }
+        return errorJson(
+            "ambiguous_species",
+            "Species '$input' matches multiple entries: $detail. Use scientific name or abbreviation.",
+        )
+    }
+
     private fun errorJson(code: String, message: String): String =
         objectMapper.writeValueAsString(mapOf("error" to code, "message" to message))
 
-    private fun JsonNode.optionalLong(field: String): Long? {
+    private fun JsonNode.optionalString(field: String): String? {
         val node = path(field)
         return when {
-            node.isNull || node.isMissingNode || node.isTextual && node.asText().equals("null", ignoreCase = true) -> null
-            node.isNumber -> node.asLong()
-            node.isTextual && node.asText().isNotBlank() -> node.asText().toLongOrNull()
+            node.isNull || node.isMissingNode -> null
+            node.isTextual -> node.asText().trim().takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+            node.isNumber -> node.asText() // reject numeric ids from older model habits by treating as unknown name
             else -> null
         }
     }
@@ -276,13 +359,21 @@ class ChatToolExecutor(
         val COUNT_COLMEIAS_DEF = ToolDefinition(
             name = ChatToolNames.COUNT_COLMEIAS,
             description =
-                "Count the customer's hives (colmeias). Optional speciesId/statusId filter by vocabulary ids. " +
-                    "Optional groupBy SPECIES and/or STATUS for breakdowns. Numbers are authoritative — restate them.",
+                "Count the customer's hives (colmeias). Optional species/status filters by vocabulary names " +
+                    "(common name or abbreviation for species; status name). " +
+                    "Optional groupBy SPECIES and/or STATUS for breakdowns. Numbers are authoritative — restate them. " +
+                    "Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
-                    "speciesId" to mapOf("type" to listOf("integer", "null"), "description" to "Species id from list_vocabulary, or null"),
-                    "statusId" to mapOf("type" to listOf("integer", "null"), "description" to "Status id from list_vocabulary, or null"),
+                    "species" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to "Species common name (pt-BR) or abbreviation from list_vocabulary, or null",
+                    ),
+                    "status" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to "Status name from list_vocabulary, or null",
+                    ),
                     "groupBy" to mapOf(
                         "type" to "array",
                         "items" to mapOf("type" to "string", "enum" to listOf("SPECIES", "STATUS")),
@@ -295,7 +386,9 @@ class ChatToolExecutor(
 
         val LIST_VOCABULARY_DEF = ToolDefinition(
             name = ChatToolNames.LIST_VOCABULARY,
-            description = "List valid species and status ids/names for filters and create/update.",
+            description =
+                "List valid species common names / abbreviations / scientific names and status names " +
+                    "for filters and create/update. Use these labels in other tools — never numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to emptyMap<String, Any>(),
@@ -332,16 +425,19 @@ class ChatToolExecutor(
         val CREATE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.CREATE_COLMEIA,
             description =
-                "Create a hive for the linked customer. speciesId required (from list_vocabulary). " +
+                "Create a hive for the linked customer. species (common name) required from list_vocabulary. " +
                     "code and startDate only if the user provided them (otherwise null). " +
-                    "status defaults to em_desenvolvimento.",
+                    "status defaults to em_desenvolvimento. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
-                    "speciesId" to mapOf("type" to "integer", "description" to "Required species id"),
-                    "statusId" to mapOf(
-                        "type" to listOf("integer", "null"),
-                        "description" to "Optional status id; default em_desenvolvimento",
+                    "species" to mapOf(
+                        "type" to "string",
+                        "description" to "Required species common name (or abbreviation) from list_vocabulary",
+                    ),
+                    "status" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to "Optional status name; default em_desenvolvimento",
                     ),
                     "code" to mapOf(
                         "type" to listOf("integer", "null"),
@@ -352,7 +448,7 @@ class ChatToolExecutor(
                         "description" to "ISO-8601 instant if the user provided one; otherwise null",
                     ),
                 ),
-                "required" to listOf("speciesId"),
+                "required" to listOf("species"),
                 "additionalProperties" to false,
             ),
         )
@@ -360,15 +456,15 @@ class ChatToolExecutor(
         val UPDATE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.UPDATE_COLMEIA,
             description =
-                "Update an owned hive status. Identify by code. Only statusId is mutable (appends history). " +
-                    "Species, code, meliponário, and startDate stay fixed.",
+                "Update an owned hive status. Identify by code. Only status (name) is mutable (appends history). " +
+                    "Species, code, meliponário, and startDate stay fixed. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
                     "code" to mapOf("type" to "integer", "description" to "Hive code"),
-                    "statusId" to mapOf("type" to "integer", "description" to "New status id (appends history)"),
+                    "status" to mapOf("type" to "string", "description" to "New status name (appends history)"),
                 ),
-                "required" to listOf("code", "statusId"),
+                "required" to listOf("code", "status"),
                 "additionalProperties" to false,
             ),
         )
