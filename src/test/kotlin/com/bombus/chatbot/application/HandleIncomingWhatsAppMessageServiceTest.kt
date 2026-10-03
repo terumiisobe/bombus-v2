@@ -76,7 +76,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
                         AssistantToolCall(
                             id = "call_1",
                             name = ChatToolNames.COUNT_COLMEIAS,
-                            argumentsJson = """{"speciesId":null,"statusId":null,"groupBy":[]}""",
+                            argumentsJson = """{"species":null,"status":null,"groupBy":[]}""",
                         ),
                     ),
                 ),
@@ -111,7 +111,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
                         AssistantToolCall(
                             id = "call_gb",
                             name = ChatToolNames.COUNT_COLMEIAS,
-                            argumentsJson = """{"speciesId":null,"statusId":3,"groupBy":["SPECIES"]}""",
+                            argumentsJson = """{"species":null,"status":"estavel","groupBy":["SPECIES"]}""",
                         ),
                     ),
                 ),
@@ -132,8 +132,9 @@ class HandleIncomingWhatsAppMessageServiceTest {
             count.lastQuery,
         )
         val toolJson = ai.lastMessages.filterIsInstance<AgentMessage.Tool>().single().result.contentJson
-        assertTrue(toolJson.contains("\"statusLabel\":\"estavel\""))
+        assertTrue(toolJson.contains("\"status\":\"estavel\""))
         assertTrue(toolJson.contains("perSpecies"))
+        assertTrue(!toolJson.contains("statusId"))
     }
 
     @Test

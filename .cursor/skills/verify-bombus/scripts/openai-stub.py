@@ -44,15 +44,15 @@ def completion(body):
     elif any(k in text for k in ("liste", "listar")):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("list_colmeias", {"limit": 20})]}
     elif any(k in text for k in ("criar", "nova colmeia", "cadastrar")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("create_colmeia", {"speciesId": 1})]}
+        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("create_colmeia", {"species": "Jataí"})]}
     elif any(k in text for k in ("atualizar", "mudar status")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "statusId": 1})]}
+        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "status": "em_desenvolvimento"})]}
     elif any(k in text for k in ("confirmo", "pode excluir", "pode apagar", "sim, exclua")):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("delete_colmeia", {"code": 1, "confirmed": True})]}
     elif any(k in text for k in ("excluir", "remover", "apagar", "deletar")):
         message = {"role": "assistant", "content": "Essa exclusão é definitiva e irreversível. Confirma que posso apagar a colmeia código 1?"}
     elif any(k in text for k in ("quantas", "contar")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("count_colmeias", {"speciesId": None, "statusId": None, "groupBy": []})]}
+        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("count_colmeias", {"species": None, "status": None, "groupBy": []})]}
     else:
         message = {"role": "assistant", "content": "Posso contar, listar, criar, atualizar ou excluir colmeias."}
     return {"id": "chatcmpl-verify", "object": "chat.completion", "choices": [{"index": 0, "message": message, "finish_reason": "stop"}]}

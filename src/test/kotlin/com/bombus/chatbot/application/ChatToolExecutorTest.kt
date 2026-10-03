@@ -48,13 +48,13 @@ class ChatToolExecutorTest {
     )
 
     @Test
-    fun `count_colmeias zero total includes status filter label in tool JSON`() {
+    fun `count_colmeias zero total includes status filter name in tool JSON`() {
         val result = executor.execute(
             userId = 42L,
             call = AssistantToolCall(
                 id = "call_z",
                 name = ChatToolNames.COUNT_COLMEIAS,
-                argumentsJson = """{"speciesId":null,"statusId":3,"groupBy":[]}""",
+                argumentsJson = """{"species":null,"status":"estável","groupBy":[]}""",
             ),
         )
 
@@ -62,9 +62,10 @@ class ChatToolExecutorTest {
         assertEquals(ChatToolNames.COUNT_COLMEIAS, result.name)
         val json = objectMapper.readTree(result.contentJson)
         assertEquals(0, json.path("total").asLong())
-        assertEquals(3, json.path("statusId").asLong())
-        assertEquals("estavel", json.path("statusLabel").asText())
-        assertTrue(json.path("speciesLabel").isNull)
+        assertTrue(json.path("speciesId").isMissingNode)
+        assertTrue(json.path("statusId").isMissingNode)
+        assertTrue(json.path("species").isNull)
+        assertEquals("estavel", json.path("status").asText())
         assertTrue(json.path("excludedStatusLabel").isNull)
         assertEquals(
             CountColmeiasQuery(userId = 42L, statusId = 3),
@@ -73,34 +74,52 @@ class ChatToolExecutorTest {
     }
 
     @Test
-    fun `count_colmeias unknown species id returns error and does not count`() {
+    fun `count_colmeias resolves species common name ignoring case and accent`() {
+        count.result = ColmeiaCount(total = 2)
+        executor.execute(
+            userId = 9L,
+            call = AssistantToolCall(
+                id = "call_s",
+                name = ChatToolNames.COUNT_COLMEIAS,
+                argumentsJson = """{"species":"jataí"}""",
+            ),
+        )
+
+        assertEquals(
+            CountColmeiasQuery(userId = 9L, speciesId = 1),
+            count.lastQuery,
+        )
+    }
+
+    @Test
+    fun `count_colmeias unknown species name returns error and does not count`() {
         val result = executor.execute(
             userId = 42L,
             call = AssistantToolCall(
                 id = "call_bad_sp",
                 name = ChatToolNames.COUNT_COLMEIAS,
-                argumentsJson = """{"speciesId":999,"statusId":null,"groupBy":[]}""",
+                argumentsJson = """{"species":"xyz","status":null,"groupBy":[]}""",
             ),
         )
 
         val json = objectMapper.readTree(result.contentJson)
-        assertEquals("unknown_species_id", json.path("error").asText())
+        assertEquals("unknown_species", json.path("error").asText())
         assertNull(count.lastQuery)
     }
 
     @Test
-    fun `count_colmeias unknown status id returns error and does not count`() {
+    fun `count_colmeias unknown status name returns error and does not count`() {
         val result = executor.execute(
             userId = 42L,
             call = AssistantToolCall(
                 id = "call_bad_st",
                 name = ChatToolNames.COUNT_COLMEIAS,
-                argumentsJson = """{"speciesId":null,"statusId":999,"groupBy":[]}""",
+                argumentsJson = """{"species":null,"status":"naoexiste","groupBy":[]}""",
             ),
         )
 
         val json = objectMapper.readTree(result.contentJson)
-        assertEquals("unknown_status_id", json.path("error").asText())
+        assertEquals("unknown_status", json.path("error").asText())
         assertNull(count.lastQuery)
     }
 
@@ -112,21 +131,57 @@ class ChatToolExecutorTest {
             call = AssistantToolCall(
                 id = "call_ok",
                 name = ChatToolNames.COUNT_COLMEIAS,
-                argumentsJson = """{"speciesId":2,"statusId":null,"groupBy":[]}""",
+                argumentsJson = """{"species":"Canudo","status":null,"groupBy":[]}""",
             ),
         )
 
         val json = objectMapper.readTree(result.contentJson)
         assertEquals(106, json.path("total").asLong())
-        assertEquals("Canudo", json.path("speciesLabel").asText())
+        assertEquals("Canudo", json.path("species").asText())
         assertEquals("Scaptotrigona depilis", json.path("speciesScientificName").asText())
         assertEquals("CN", json.path("speciesAbbreviation").asText())
         assertEquals("perdida", json.path("excludedStatusLabel").asText())
-        assertTrue(json.path("statusLabel").isNull)
+        assertTrue(json.path("status").isNull)
+        assertTrue(json.path("speciesId").isMissingNode)
         assertEquals(
             CountColmeiasQuery(userId = 42L, speciesId = 2L),
             count.lastQuery,
         )
+    }
+
+    @Test
+    fun `count_colmeias rejects unknown species with valid names`() {
+        val result = executor.execute(
+            userId = 9L,
+            call = AssistantToolCall(
+                id = "call_bad",
+                name = ChatToolNames.COUNT_COLMEIAS,
+                argumentsJson = """{"species":"xyz"}""",
+            ),
+        )
+
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals("unknown_species", json.path("error").asText())
+        assertTrue(json.path("message").asText().contains("Jataí"))
+        assertEquals(null, count.lastQuery)
+    }
+
+    @Test
+    fun `count_colmeias reports ambiguous species when common name collides`() {
+        val result = executor.execute(
+            userId = 9L,
+            call = AssistantToolCall(
+                id = "call_amb",
+                name = ChatToolNames.COUNT_COLMEIAS,
+                argumentsJson = """{"species":"Manduri"}""",
+            ),
+        )
+
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals("ambiguous_species", json.path("error").asText())
+        assertTrue(json.path("message").asText().contains("MD"))
+        assertTrue(json.path("message").asText().contains("MT"))
+        assertEquals(null, count.lastQuery)
     }
 
     @Test
@@ -148,17 +203,18 @@ class ChatToolExecutorTest {
     }
 
     @Test
-    fun `list_vocabulary returns species and status id name lists`() {
+    fun `list_vocabulary returns species and status names without ids`() {
         val result = executor.execute(
             userId = 1L,
             call = AssistantToolCall(id = "call_v", name = ChatToolNames.LIST_VOCABULARY, argumentsJson = "{}"),
         )
 
         val json = objectMapper.readTree(result.contentJson)
-        assertEquals(1, json.path("species").path(0).path("id").asLong())
+        assertTrue(json.path("species").path(0).path("id").isMissingNode)
         assertEquals("Jataí", json.path("species").path(0).path("commonName").asText())
-        assertEquals(3, json.path("statuses").path(0).path("id").asLong())
-        assertEquals("estavel", json.path("statuses").path(0).path("name").asText())
+        val statusNames = json.path("statuses").map { it.path("name").asText() }
+        assertTrue(statusNames.contains("estavel"))
+        assertTrue(json.path("statuses").path(0).path("id").isMissingNode)
     }
 
     @Test
@@ -209,14 +265,14 @@ class ChatToolExecutorTest {
     }
 
     @Test
-    fun `create_colmeia maps args to command`() {
+    fun `create_colmeia maps name args to command ids`() {
         create.result = SAMPLE
         val result = executor.execute(
             userId = 42L,
             call = AssistantToolCall(
                 id = "call_c",
                 name = ChatToolNames.CREATE_COLMEIA,
-                argumentsJson = """{"speciesId":1,"statusId":3}""",
+                argumentsJson = """{"species":"Jataí","status":"estavel"}""",
             ),
         )
 
@@ -227,6 +283,27 @@ class ChatToolExecutorTest {
         val json = objectMapper.readTree(result.contentJson)
         assertTrue(json.path("colmeia").path("id").isMissingNode)
         assertEquals("Jataí", json.path("colmeia").path("species").asText())
+    }
+
+    @Test
+    fun `update_colmeia resolves status name and identifies by code`() {
+        update.result = SAMPLE.copy(statusId = 3L, statusName = "estavel")
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_u",
+                name = ChatToolNames.UPDATE_COLMEIA,
+                argumentsJson = """{"code":7,"status":"em desenvolvimento"}""",
+            ),
+        )
+
+        assertEquals(
+            UpdateColmeiaCommand(userId = 42L, code = 7, statusId = 1L),
+            update.lastCommand,
+        )
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals(7, json.path("colmeia").path("code").asInt())
+        assertTrue(json.path("colmeia").path("id").isMissingNode)
     }
 
     @Test
@@ -258,7 +335,7 @@ class ChatToolExecutorTest {
     }
 
     @Test
-    fun `definitions expose count list vocabulary and CRUD tools`() {
+    fun `definitions expose name-based species and status params`() {
         val names = executor.definitions().map { it.name }
         assertEquals(
             listOf(
@@ -271,6 +348,13 @@ class ChatToolExecutorTest {
             ),
             names,
         )
+        val countProps = executor.definitions()
+            .first { it.name == ChatToolNames.COUNT_COLMEIAS }
+            .parametersJsonSchema["properties"] as Map<*, *>
+        assertTrue(countProps.containsKey("species"))
+        assertTrue(countProps.containsKey("status"))
+        assertTrue(!countProps.containsKey("speciesId"))
+        assertTrue(!countProps.containsKey("statusId"))
     }
 
     private class RecordingCount(var result: ColmeiaCount) : CountColmeiasUseCase {
@@ -307,7 +391,13 @@ class ChatToolExecutorTest {
 
     private class RecordingUpdate : UpdateColmeiaUseCase {
         lateinit var result: ColmeiaSummary
-        override fun update(command: UpdateColmeiaCommand): ColmeiaSummary = result
+        var lastCommand: UpdateColmeiaCommand? = null
+            private set
+
+        override fun update(command: UpdateColmeiaCommand): ColmeiaSummary {
+            lastCommand = command
+            return result
+        }
     }
 
     private class RecordingDelete : DeleteColmeiaUseCase {
@@ -326,8 +416,11 @@ class ChatToolExecutorTest {
             species = listOf(
                 SpeciesRef(1, "JT", "Jataí", "Tetragonisca angustula"),
                 SpeciesRef(2, "CN", "Canudo", "Scaptotrigona depilis"),
+                SpeciesRef(6, "MD", "Manduri", "Melipona marginata"),
+                SpeciesRef(7, "MT", "Manduri", "Melipona torrida"),
             ),
             statuses = listOf(
+                StatusRef(1, "em_desenvolvimento"),
                 StatusRef(3, "estavel"),
                 StatusRef(4, "perdida"),
             ),

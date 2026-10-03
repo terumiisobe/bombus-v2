@@ -28,7 +28,7 @@ class OpenAiConversationAdapterTest {
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
-                    "speciesId" to mapOf("type" to listOf("integer", "null")),
+                    "species" to mapOf("type" to listOf("string", "null")),
                 ),
             ),
         ),
@@ -70,7 +70,9 @@ class OpenAiConversationAdapterTest {
         assertThat(system.path("content").asText())
             .containsIgnoringCase("nunca invente")
             .contains("pt-BR")
-            .contains("speciesLabel")
+            .contains("nunca ids")
+            .doesNotContain("speciesId")
+            .doesNotContain("statusId")
             .contains("speciesScientificName")
             .contains("excludedStatusLabel")
     }
@@ -79,7 +81,7 @@ class OpenAiConversationAdapterTest {
     fun `complete maps tool_calls from the model response`() {
         enqueueToolCalls(
             """
-            [{"id":"call_abc","type":"function","function":{"name":"count_colmeias","arguments":"{\"statusId\":3}"}}]
+            [{"id":"call_abc","type":"function","function":{"name":"count_colmeias","arguments":"{\"status\":\"estavel\"}"}}]
             """.trimIndent(),
         )
 
@@ -91,7 +93,7 @@ class OpenAiConversationAdapterTest {
                     AssistantToolCall(
                         id = "call_abc",
                         name = "count_colmeias",
-                        argumentsJson = """{"statusId":3}""",
+                        argumentsJson = """{"status":"estavel"}""",
                     ),
                 ),
             ),
@@ -110,7 +112,7 @@ class OpenAiConversationAdapterTest {
                         AssistantToolCall(
                             id = "call_1",
                             name = "count_colmeias",
-                            argumentsJson = """{"statusId":3,"groupBy":["SPECIES"]}""",
+                            argumentsJson = """{"status":"estavel","groupBy":["SPECIES"]}""",
                         ),
                     ),
                 ),
@@ -118,7 +120,7 @@ class OpenAiConversationAdapterTest {
                     ToolResultMessage(
                         toolCallId = "call_1",
                         name = "count_colmeias",
-                        contentJson = """{"total":0,"statusLabel":"estavel"}""",
+                        contentJson = """{"total":0,"status":"estavel"}""",
                     ),
                 ),
             ),
@@ -136,7 +138,7 @@ class OpenAiConversationAdapterTest {
 
         val tool = body.path("messages").path(3)
         assertThat(tool.path("tool_call_id").asText()).isEqualTo("call_1")
-        assertThat(tool.path("content").asText()).contains("statusLabel")
+        assertThat(tool.path("content").asText()).contains("\"status\":\"estavel\"")
     }
 
     @Test
