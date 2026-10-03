@@ -14,6 +14,7 @@ import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
+import com.bombus.colmeia.application.ColmeiaCountProperties
 import com.bombus.colmeia.domain.ColmeiaCount
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.ColmeiaVocabulary
@@ -24,6 +25,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ChatToolExecutorTest {
@@ -42,6 +44,7 @@ class ChatToolExecutorTest {
         updateColmeia = update,
         deleteColmeia = delete,
         objectMapper = objectMapper,
+        countProperties = ColmeiaCountProperties(defaultExcludedStatus = "perdida"),
     )
 
     @Test
@@ -63,6 +66,7 @@ class ChatToolExecutorTest {
         assertTrue(json.path("statusId").isMissingNode)
         assertTrue(json.path("species").isNull)
         assertEquals("estavel", json.path("status").asText())
+        assertTrue(json.path("excludedStatusLabel").isNull)
         assertEquals(
             CountColmeiasQuery(userId = 42L, statusId = 3),
             count.lastQuery,
@@ -83,6 +87,64 @@ class ChatToolExecutorTest {
 
         assertEquals(
             CountColmeiasQuery(userId = 9L, speciesId = 1),
+            count.lastQuery,
+        )
+    }
+
+    @Test
+    fun `count_colmeias unknown species name returns error and does not count`() {
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_bad_sp",
+                name = ChatToolNames.COUNT_COLMEIAS,
+                argumentsJson = """{"species":"xyz","status":null,"groupBy":[]}""",
+            ),
+        )
+
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals("unknown_species", json.path("error").asText())
+        assertNull(count.lastQuery)
+    }
+
+    @Test
+    fun `count_colmeias unknown status name returns error and does not count`() {
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_bad_st",
+                name = ChatToolNames.COUNT_COLMEIAS,
+                argumentsJson = """{"species":null,"status":"naoexiste","groupBy":[]}""",
+            ),
+        )
+
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals("unknown_status", json.path("error").asText())
+        assertNull(count.lastQuery)
+    }
+
+    @Test
+    fun `count_colmeias success payload includes scientific name and excluded status label`() {
+        count.result = ColmeiaCount(total = 106)
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_ok",
+                name = ChatToolNames.COUNT_COLMEIAS,
+                argumentsJson = """{"species":"Canudo","status":null,"groupBy":[]}""",
+            ),
+        )
+
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals(106, json.path("total").asLong())
+        assertEquals("Canudo", json.path("species").asText())
+        assertEquals("Scaptotrigona depilis", json.path("speciesScientificName").asText())
+        assertEquals("CN", json.path("speciesAbbreviation").asText())
+        assertEquals("perdida", json.path("excludedStatusLabel").asText())
+        assertTrue(json.path("status").isNull)
+        assertTrue(json.path("speciesId").isMissingNode)
+        assertEquals(
+            CountColmeiasQuery(userId = 42L, speciesId = 2L),
             count.lastQuery,
         )
     }
@@ -353,12 +415,14 @@ class ChatToolExecutorTest {
         override fun list(): ColmeiaVocabulary = ColmeiaVocabulary(
             species = listOf(
                 SpeciesRef(1, "JT", "Jataí", "Tetragonisca angustula"),
+                SpeciesRef(2, "CN", "Canudo", "Scaptotrigona depilis"),
                 SpeciesRef(6, "MD", "Manduri", "Melipona marginata"),
                 SpeciesRef(7, "MT", "Manduri", "Melipona torrida"),
             ),
             statuses = listOf(
                 StatusRef(1, "em_desenvolvimento"),
                 StatusRef(3, "estavel"),
+                StatusRef(4, "perdida"),
             ),
         )
     }

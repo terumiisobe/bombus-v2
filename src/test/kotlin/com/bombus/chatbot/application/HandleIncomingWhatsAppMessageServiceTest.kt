@@ -28,6 +28,7 @@ import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.DeletedColmeia
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
+import com.bombus.colmeia.application.ColmeiaCountProperties
 import com.bombus.colmeia.domain.ColmeiaCount
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.ColmeiaVocabulary
@@ -50,7 +51,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
     private val objectMapper = jacksonObjectMapper()
     private val agentProperties = ChatbotAgentProperties(
-        maxToolRounds = 2,
+        maxToolRounds = 3,
         fallbackReply = FALLBACK,
     )
 
@@ -153,34 +154,22 @@ class HandleIncomingWhatsAppMessageServiceTest {
 
     @Test
     fun `max rounds exceeded returns the fallback reply`() {
-        val ai = FakeConversationAi(
+        val endlessToolCall = AgentCompletion.ToolCalls(
             listOf(
-                AgentCompletion.ToolCalls(
-                    listOf(
-                        AssistantToolCall(
-                            id = "c1",
-                            name = ChatToolNames.COUNT_COLMEIAS,
-                            argumentsJson = "{}",
-                        ),
-                    ),
-                ),
-                AgentCompletion.ToolCalls(
-                    listOf(
-                        AssistantToolCall(
-                            id = "c2",
-                            name = ChatToolNames.COUNT_COLMEIAS,
-                            argumentsJson = "{}",
-                        ),
-                    ),
+                AssistantToolCall(
+                    id = "c1",
+                    name = ChatToolNames.COUNT_COLMEIAS,
+                    argumentsJson = "{}",
                 ),
             ),
         )
+        val ai = FakeConversationAi(listOf(endlessToolCall, endlessToolCall, endlessToolCall))
         val service = service(ai = ai)
 
         val reply = service.handle(IncomingMessage(PHONE, "quantas?"))
 
         assertEquals(FALLBACK, reply)
-        assertEquals(2, ai.completeCalls)
+        assertEquals(3, ai.completeCalls)
     }
 
     @Test
@@ -261,6 +250,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
             updateColmeia = NoopUpdate,
             deleteColmeia = NoopDelete,
             objectMapper = objectMapper,
+            countProperties = ColmeiaCountProperties(defaultExcludedStatus = "perdida"),
         )
         return HandleIncomingWhatsAppMessageService(
             resolveCustomer = FakeResolveCustomer(resolution),

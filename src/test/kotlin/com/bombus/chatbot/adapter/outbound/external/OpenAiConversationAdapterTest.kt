@@ -73,6 +73,8 @@ class OpenAiConversationAdapterTest {
             .contains("nunca ids")
             .doesNotContain("speciesId")
             .doesNotContain("statusId")
+            .contains("speciesScientificName")
+            .contains("excludedStatusLabel")
     }
 
     @Test

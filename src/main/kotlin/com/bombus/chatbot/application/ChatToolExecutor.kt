@@ -3,6 +3,7 @@ package com.bombus.chatbot.application
 import com.bombus.chatbot.domain.AssistantToolCall
 import com.bombus.chatbot.domain.ToolDefinition
 import com.bombus.chatbot.domain.ToolResultMessage
+import com.bombus.colmeia.application.ColmeiaCountProperties
 import com.bombus.colmeia.application.port.inbound.CountColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.CountColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.CountDimension
@@ -39,6 +40,7 @@ class ChatToolExecutor(
     private val updateColmeia: UpdateColmeiaUseCase,
     private val deleteColmeia: DeleteColmeiaUseCase,
     private val objectMapper: ObjectMapper,
+    private val countProperties: ColmeiaCountProperties,
 ) {
 
     fun definitions(): List<ToolDefinition> = listOf(
@@ -103,7 +105,10 @@ class ChatToolExecutor(
         val payload = linkedMapOf<String, Any?>(
             "total" to count.total,
             "species" to speciesRef?.commonName,
+            "speciesScientificName" to speciesRef?.scientificName,
+            "speciesAbbreviation" to speciesRef?.abbreviation,
             "status" to statusRef?.name,
+            "excludedStatusLabel" to if (statusRef == null) countProperties.defaultExcludedStatus else null,
             "groupBy" to groupBy.map { it.name },
         )
         count.perSpecies?.let { breakdown ->
@@ -360,9 +365,9 @@ class ChatToolExecutor(
             name = ChatToolNames.COUNT_COLMEIAS,
             description =
                 "Count the customer's hives (colmeias). Optional species/status filters by vocabulary names " +
-                    "(common name or abbreviation for species; status name). " +
-                    "Optional groupBy SPECIES and/or STATUS for breakdowns. Numbers are authoritative — restate them. " +
-                    "Never pass numeric ids.",
+                    "(common name or abbreviation for species; status name). Match the user's words via " +
+                    "list_vocabulary first. Never invent names or pass numeric ids. Optional groupBy SPECIES " +
+                    "and/or STATUS for breakdowns. Numbers and labels in the tool JSON are authoritative — restate them.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
