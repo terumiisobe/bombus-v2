@@ -87,7 +87,8 @@ class OwnedColmeiaAdapterIntegrationTest {
         )
         assertThat(adapter.isCodeTaken(MEL, 9)).isTrue()
 
-        val lost = adapter.appendStatus(first.id, perdidaId, Instant.parse("2026-02-01T00:00:00Z"))!!
+        // Must be after insert's NOW() status row so "latest" is perdida.
+        val lost = adapter.appendStatus(first.id, perdidaId, Instant.now().plusSeconds(60))!!
         assertThat(lost.code).isEqualTo(9)
         assertThat(adapter.isCodeTaken(MEL, 9, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
@@ -106,7 +107,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             startDate = Instant.parse("2026-01-01T00:00:00Z"),
             initialStatusId = desenvolvendoId,
         )
-        val sold = adapter.appendStatus(first.id, vendidaId, Instant.parse("2026-02-01T00:00:00Z"))!!
+        val sold = adapter.appendStatus(first.id, vendidaId, Instant.now().plusSeconds(60))!!
         assertThat(sold.code).isEqualTo(8)
         assertThat(adapter.isCodeTaken(MEL, 8, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
@@ -219,7 +220,7 @@ class OwnedColmeiaAdapterIntegrationTest {
 
         assertThat(adapter.listMeliponarioIdsByOwner(OWNER)).containsExactly(MEL)
         assertThat(adapter.findByCodeForOwner(OWNER, 5)).isEmpty()
-        assertThat(adapter.listByOwner(OWNER, null, 20, 0)).extracting("id").doesNotContain(hive.id)
+        assertThat(adapter.listByOwner(OWNER, emptyList(), 20, 0)).extracting("id").doesNotContain(hive.id)
         assertThat(adapter.deleteByIdForOwner(OWNER, hive.id)).isFalse()
         assertThat(colmeiaCount(hive.id)).isEqualTo(1L)
     }
