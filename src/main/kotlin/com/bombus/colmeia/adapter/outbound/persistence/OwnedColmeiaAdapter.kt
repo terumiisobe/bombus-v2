@@ -192,7 +192,6 @@ class OwnedColmeiaAdapter(
             ORDER BY c.id
         """.trimIndent()
 
-        // Single statement re-checks membership at write time.
         val DELETE_ACCESSIBLE_SQL = """
             DELETE FROM colmeia c
             WHERE c.id = :colmeiaId

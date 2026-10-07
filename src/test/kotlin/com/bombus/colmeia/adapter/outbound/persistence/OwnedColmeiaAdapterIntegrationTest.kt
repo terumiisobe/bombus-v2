@@ -209,6 +209,21 @@ class OwnedColmeiaAdapterIntegrationTest {
         assertThat(adapter.listMeliponarioIdsByOwner(OWNER)).containsExactly(MEL)
     }
 
+    @Test
+    fun `owner_id without membership grants nothing for list find and delete`() {
+        jdbcTemplate.update(
+            "INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)",
+            MEL_ORPHAN, "orphan", "addr", OWNER,
+        )
+        val hive = adapter.insert(5, 1, MEL_ORPHAN, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+
+        assertThat(adapter.listMeliponarioIdsByOwner(OWNER)).containsExactly(MEL)
+        assertThat(adapter.findByCodeForOwner(OWNER, 5)).isEmpty()
+        assertThat(adapter.listByOwner(OWNER, null, 20, 0)).extracting("id").doesNotContain(hive.id)
+        assertThat(adapter.deleteByIdForOwner(OWNER, hive.id)).isFalse()
+        assertThat(colmeiaCount(hive.id)).isEqualTo(1L)
+    }
+
     private fun insertUsuario(id: Long, email: String) {
         jdbcTemplate.update(
             "INSERT INTO usuario (id, email, password_hash) VALUES (?, ?, ?)",
@@ -240,6 +255,7 @@ class OwnedColmeiaAdapterIntegrationTest {
         private const val MEMBER = 3L
         private const val MEL = 10L
         private const val MEL_OTHER = 11L
+        private const val MEL_ORPHAN = 12L
 
         @Container
         @ServiceConnection

@@ -47,8 +47,6 @@ class ColmeiaCountAdapterIntegrationTest {
         insertUsuario(OWNER, "o@x.test")
         insertUsuario(OTHER, "p@x.test")
         insertUsuario(MEMBER, "m@x.test")
-        // Two yards OWNER belongs to (multi-yard sum), one for OTHER (isolation),
-        // one co-member on A, and one yard whose owner_id is OWNER but has no membership.
         insertMeliponario(MEL_A, OWNER, "A")
         insertMeliponario(MEL_B, OWNER, "B")
         insertMeliponario(MEL_OTHER, OTHER, "C")
@@ -75,7 +73,6 @@ class ColmeiaCountAdapterIntegrationTest {
         insertColmeia(id = 5, speciesId = 2, meliponarioId = MEL_B)
         insertStatus(colmeiaId = 5, statusId = STATUS_PERDIDA, at = "2024-01-01T10:00:00Z")
 
-        // c6: species 1, OTHER's yard — must never be counted for OWNER.
         insertColmeia(id = 6, speciesId = 1, meliponarioId = MEL_OTHER)
         insertStatus(colmeiaId = 6, statusId = STATUS_ESTAVEL, at = "2024-01-01T10:00:00Z")
 
@@ -83,7 +80,6 @@ class ColmeiaCountAdapterIntegrationTest {
         insertColmeia(id = 7, speciesId = 2, meliponarioId = MEL_B)
         insertStatus(colmeiaId = 7, statusId = STATUS_VENDIDA, at = "2024-01-01T10:00:00Z")
 
-        // c8: estavel in a yard OWNER is recorded as owner_id of, with no membership row.
         insertColmeia(id = 8, speciesId = 1, meliponarioId = MEL_ORPHAN)
         insertStatus(colmeiaId = 8, statusId = STATUS_ESTAVEL, at = "2024-01-01T10:00:00Z")
     }

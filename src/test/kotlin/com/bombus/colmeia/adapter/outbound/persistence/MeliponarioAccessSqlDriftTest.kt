@@ -5,10 +5,6 @@ import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
 
-/**
- * Locks the membership predicate in [MeliponarioAccessSql].
- * Adapters must reuse the fragments; they must not paste owner or join-table SQL.
- */
 class MeliponarioAccessSqlDriftTest {
 
     @Test
