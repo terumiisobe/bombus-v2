@@ -2,6 +2,7 @@ package com.bombus.colmeia.application
 
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
+import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
 import com.bombus.colmeia.application.port.outbound.ColmeiaVocabularyPort
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
 import com.bombus.colmeia.domain.ColmeiaCommandError
@@ -37,7 +38,12 @@ class UpdateColmeiaService(
             )
         }
 
-        return ownedColmeiaPort.appendStatus(existing.id, command.statusId, clock.instant())
-            ?: throw ColmeiaCommandError.ColmeiaNotFound()
+        return ownedColmeiaPort.appendStatus(
+            AppendColmeiaStatus(
+                colmeiaId = existing.id,
+                statusId = command.statusId,
+                recordedAt = clock.instant(),
+            ),
+        ) ?: throw ColmeiaCommandError.ColmeiaNotFound()
     }
 }

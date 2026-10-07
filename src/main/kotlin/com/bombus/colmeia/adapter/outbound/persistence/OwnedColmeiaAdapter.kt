@@ -1,5 +1,6 @@
 package com.bombus.colmeia.adapter.outbound.persistence
 
+import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
 import com.bombus.colmeia.domain.ColmeiaSummary
 import org.springframework.jdbc.core.RowMapper
@@ -101,20 +102,24 @@ class OwnedColmeiaAdapter(
         return findByIdUnchecked(id)!!
     }
 
-    override fun appendStatus(colmeiaId: Long, statusId: Long, recordedAt: Instant): ColmeiaSummary? {
+    override fun appendStatus(append: AppendColmeiaStatus): ColmeiaSummary? {
         val updated = jdbc.update(
             """
-            INSERT INTO colmeia_status_historico (colmeia_id, status_id, recorded_at)
-            SELECT :id, :statusId, :at
+            INSERT INTO colmeia_status_historico (
+                colmeia_id, status_id, recorded_at, recorded_by_user_id, note
+            )
+            SELECT :id, :statusId, :at, :recordedByUserId, :note
             WHERE EXISTS (SELECT 1 FROM colmeia WHERE id = :id)
             """.trimIndent(),
             MapSqlParameterSource()
-                .addValue("id", colmeiaId)
-                .addValue("statusId", statusId)
-                .addValue("at", Timestamp.from(recordedAt)),
+                .addValue("id", append.colmeiaId)
+                .addValue("statusId", append.statusId)
+                .addValue("at", Timestamp.from(append.recordedAt))
+                .addValue("recordedByUserId", append.recordedByUserId)
+                .addValue("note", append.note),
         )
         if (updated == 0) return null
-        return findByIdUnchecked(colmeiaId)
+        return findByIdUnchecked(append.colmeiaId)
     }
 
     override fun deleteByIdForOwner(userId: Long, colmeiaId: Long): Boolean {

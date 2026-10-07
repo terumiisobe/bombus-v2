@@ -1,5 +1,6 @@
 package com.bombus.colmeia.application
 
+import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
 import com.bombus.colmeia.domain.ColmeiaCommandError
 import com.bombus.colmeia.domain.ColmeiaSummary
@@ -77,7 +78,7 @@ class ColmeiaActiveCodeResolverTest {
             startDate: Instant?,
             initialStatusId: Long,
         ) = error("unused")
-        override fun appendStatus(colmeiaId: Long, statusId: Long, recordedAt: Instant) = null
+        override fun appendStatus(append: AppendColmeiaStatus) = null
         override fun deleteByIdForOwner(userId: Long, colmeiaId: Long) = false
     }
 
