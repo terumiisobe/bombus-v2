@@ -298,12 +298,42 @@ class ChatToolExecutorTest {
         )
 
         assertEquals(
-            RecordColmeiaStatusCommand(userId = 42L, code = 7, statusId = 1L),
+            RecordColmeiaStatusCommand(userId = 42L, code = 7, statusId = 1L, note = null),
             update.lastCommand,
         )
         val json = objectMapper.readTree(result.contentJson)
         assertEquals(7, json.path("colmeia").path("code").asInt())
         assertTrue(json.path("colmeia").path("id").isMissingNode)
+    }
+
+    @Test
+    fun `update_colmeia forwards optional note and ignores blank note`() {
+        update.result = SAMPLE.copy(statusId = 3L, statusName = "estavel")
+        executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_u_note",
+                name = ChatToolNames.UPDATE_COLMEIA,
+                argumentsJson = """{"code":7,"status":"estavel","note":"ainda fraca"}""",
+            ),
+        )
+        assertEquals(
+            RecordColmeiaStatusCommand(userId = 42L, code = 7, statusId = 3L, note = "ainda fraca"),
+            update.lastCommand,
+        )
+
+        executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_u_blank",
+                name = ChatToolNames.UPDATE_COLMEIA,
+                argumentsJson = """{"code":7,"status":"estavel","note":null}""",
+            ),
+        )
+        assertEquals(
+            RecordColmeiaStatusCommand(userId = 42L, code = 7, statusId = 3L, note = null),
+            update.lastCommand,
+        )
     }
 
     @Test
@@ -355,6 +385,25 @@ class ChatToolExecutorTest {
         assertTrue(countProps.containsKey("status"))
         assertTrue(!countProps.containsKey("speciesId"))
         assertTrue(!countProps.containsKey("statusId"))
+    }
+
+    @Test
+    fun `update_colmeia definition is visita with optional note and no visitedAt`() {
+        val updateDef = executor.definitions().first { it.name == ChatToolNames.UPDATE_COLMEIA }
+        assertTrue(updateDef.description.contains("Acompanhamento/visita", ignoreCase = true))
+        assertTrue(updateDef.description.contains("perdida", ignoreCase = true))
+        assertTrue(updateDef.description.contains("vendida", ignoreCase = true))
+        val props = updateDef.parametersJsonSchema["properties"] as Map<*, *>
+        assertTrue(props.containsKey("code"))
+        assertTrue(props.containsKey("status"))
+        assertTrue(props.containsKey("note"))
+        assertTrue(!props.containsKey("visitedAt"))
+
+        val createDef = executor.definitions().first { it.name == ChatToolNames.CREATE_COLMEIA }
+        assertTrue(createDef.description.contains("Cadastro", ignoreCase = true))
+        val deleteDef = executor.definitions().first { it.name == ChatToolNames.DELETE_COLMEIA }
+        assertTrue(deleteDef.description.contains("Cadastro", ignoreCase = true))
+        assertTrue(deleteDef.description.contains("perdida", ignoreCase = true))
     }
 
     private class RecordingCount(var result: ColmeiaCount) : CountColmeiasUseCase {
