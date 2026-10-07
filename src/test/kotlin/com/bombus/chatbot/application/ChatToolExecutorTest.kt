@@ -12,8 +12,8 @@ import com.bombus.colmeia.application.port.inbound.DeletedColmeia
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
-import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
-import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
 import com.bombus.colmeia.application.ColmeiaCountProperties
 import com.bombus.colmeia.domain.ColmeiaCount
 import com.bombus.colmeia.domain.ColmeiaSummary
@@ -41,7 +41,7 @@ class ChatToolExecutorTest {
         vocabularyUseCase = FakeVocabulary,
         listOwnedColmeias = listOwned,
         createColmeia = create,
-        updateColmeia = update,
+        recordColmeiaStatus = update,
         deleteColmeia = delete,
         objectMapper = objectMapper,
         countProperties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida")),
@@ -298,7 +298,7 @@ class ChatToolExecutorTest {
         )
 
         assertEquals(
-            UpdateColmeiaCommand(userId = 42L, code = 7, statusId = 1L),
+            RecordColmeiaStatusCommand(userId = 42L, code = 7, statusId = 1L),
             update.lastCommand,
         )
         val json = objectMapper.readTree(result.contentJson)
@@ -389,12 +389,12 @@ class ChatToolExecutorTest {
         }
     }
 
-    private class RecordingUpdate : UpdateColmeiaUseCase {
+    private class RecordingUpdate : RecordColmeiaStatusUseCase {
         lateinit var result: ColmeiaSummary
-        var lastCommand: UpdateColmeiaCommand? = null
+        var lastCommand: RecordColmeiaStatusCommand? = null
             private set
 
-        override fun update(command: UpdateColmeiaCommand): ColmeiaSummary {
+        override fun record(command: RecordColmeiaStatusCommand): ColmeiaSummary {
             lastCommand = command
             return result
         }

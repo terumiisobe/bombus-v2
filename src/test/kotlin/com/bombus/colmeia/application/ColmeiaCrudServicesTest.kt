@@ -3,7 +3,7 @@ package com.bombus.colmeia.application
 import com.bombus.colmeia.application.port.inbound.CreateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
-import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
 import com.bombus.colmeia.application.port.outbound.ColmeiaVocabularyPort
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
@@ -134,34 +134,62 @@ class ColmeiaCrudServicesTest {
     }
 
     @Test
-    fun `update changes status only on the active hive`() {
+    fun `record changes status only on the active hive`() {
         val port = FakeOwnedPort().apply {
             byCode[7] = listOf(SAMPLE)
             byId[100L] = SAMPLE
         }
-        val service = updateService(port)
+        val service = recordService(port)
 
-        val updated = service.update(
-            UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
+        val updated = service.record(
+            RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
         )
 
         assertEquals(1L, updated.speciesId)
         assertEquals(STATUS_ESTAVEL, updated.statusId)
         assertEquals(1, port.appendedStatuses.size)
         assertEquals(7, updated.code)
+        assertEquals(1L, port.appendedStatuses.single().recordedByUserId)
+        assertEquals(now, port.appendedStatuses.single().recordedAt)
     }
 
     @Test
-    fun `update to perdida keeps code and skips uniqueness check`() {
+    fun `record appends historico when status is unchanged`() {
+        val port = FakeOwnedPort().apply {
+            byCode[7] = listOf(SAMPLE)
+            byId[100L] = SAMPLE
+        }
+        val service = recordService(port)
+
+        val updated = service.record(
+            RecordColmeiaStatusCommand(
+                userId = 1L,
+                code = 7,
+                statusId = STATUS_DESENVOLVENDO,
+                note = "ainda fraca",
+            ),
+        )
+
+        assertEquals(STATUS_DESENVOLVENDO, updated.statusId)
+        assertEquals(1, port.appendedStatuses.size)
+        val append = port.appendedStatuses.single()
+        assertEquals(STATUS_DESENVOLVENDO, append.statusId)
+        assertEquals(1L, append.recordedByUserId)
+        assertEquals(now, append.recordedAt)
+        assertEquals("ainda fraca", append.note)
+    }
+
+    @Test
+    fun `record to perdida keeps code and skips uniqueness check`() {
         val port = FakeOwnedPort().apply {
             byCode[7] = listOf(SAMPLE)
             byId[100L] = SAMPLE
             activeCodes += 7
         }
-        val service = updateService(port)
+        val service = recordService(port)
 
-        val updated = service.update(
-            UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_PERDIDA),
+        val updated = service.record(
+            RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_PERDIDA),
         )
 
         assertEquals(STATUS_PERDIDA, updated.statusId)
@@ -169,15 +197,15 @@ class ColmeiaCrudServicesTest {
     }
 
     @Test
-    fun `update to vendida keeps code on the row`() {
+    fun `record to vendida keeps code on the row`() {
         val port = FakeOwnedPort().apply {
             byCode[7] = listOf(SAMPLE)
             byId[100L] = SAMPLE
         }
-        val service = updateService(port)
+        val service = recordService(port)
 
-        val updated = service.update(
-            UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_VENDIDA),
+        val updated = service.record(
+            RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_VENDIDA),
         )
 
         assertEquals(STATUS_VENDIDA, updated.statusId)
@@ -185,7 +213,7 @@ class ColmeiaCrudServicesTest {
     }
 
     @Test
-    fun `update of code that is only vendida is not found`() {
+    fun `record of code that is only vendida is not found`() {
         val sold = SAMPLE.copy(statusId = STATUS_VENDIDA, statusName = "vendida")
         val port = FakeOwnedPort().apply {
             byCode[7] = listOf(sold)
@@ -193,15 +221,15 @@ class ColmeiaCrudServicesTest {
         }
 
         assertFailsWith<ColmeiaCommandError.ColmeiaNotFound> {
-            updateService(port).update(
-                UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
+            recordService(port).record(
+                RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
             )
         }
         assertTrue(port.appendedStatuses.isEmpty())
     }
 
     @Test
-    fun `update touches only the active hive when code was reused after vendida`() {
+    fun `record touches only the active hive when code was reused after vendida`() {
         val sold = SAMPLE.copy(id = 100L, statusId = STATUS_VENDIDA, statusName = "vendida")
         val active = SAMPLE.copy(id = 101L, statusId = STATUS_DESENVOLVENDO, statusName = "desenvolvendo")
         val port = FakeOwnedPort().apply {
@@ -209,10 +237,10 @@ class ColmeiaCrudServicesTest {
             byId[100L] = sold
             byId[101L] = active
         }
-        val service = updateService(port)
+        val service = recordService(port)
 
-        val updated = service.update(
-            UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
+        val updated = service.record(
+            RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
         )
 
         assertEquals(101L, updated.id)
@@ -220,18 +248,39 @@ class ColmeiaCrudServicesTest {
         assertEquals(1, port.appendedStatuses.size)
         assertEquals(101L, port.appendedStatuses.single().colmeiaId)
         assertEquals(STATUS_ESTAVEL, port.appendedStatuses.single().statusId)
+        assertEquals(1L, port.appendedStatuses.single().recordedByUserId)
     }
 
     @Test
-    fun `update by ambiguous active codes fails`() {
+    fun `record by ambiguous active codes fails`() {
         val port = FakeOwnedPort().apply {
             byCode[7] = listOf(SAMPLE, SAMPLE.copy(id = 101L, meliponarioId = 11L))
         }
-        val service = updateService(port)
+        val service = recordService(port)
 
         assertFailsWith<ColmeiaCommandError.AmbiguousCode> {
-            service.update(UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL))
+            service.record(RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL))
         }
+    }
+
+    @Test
+    fun `record rejects note longer than 280 characters`() {
+        val port = FakeOwnedPort().apply {
+            byCode[7] = listOf(SAMPLE)
+            byId[100L] = SAMPLE
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            recordService(port).record(
+                RecordColmeiaStatusCommand(
+                    userId = 1L,
+                    code = 7,
+                    statusId = STATUS_ESTAVEL,
+                    note = "x".repeat(281),
+                ),
+            )
+        }
+        assertTrue(port.appendedStatuses.isEmpty())
     }
 
     private fun codeAvailability(port: FakeOwnedPort) =
@@ -243,8 +292,8 @@ class ColmeiaCrudServicesTest {
     private fun createService(port: FakeOwnedPort) =
         CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup, codeAvailability(port))
 
-    private fun updateService(port: FakeOwnedPort) =
-        UpdateColmeiaService(
+    private fun recordService(port: FakeOwnedPort) =
+        RecordColmeiaStatusService(
             port,
             FakeVocabulary,
             properties,

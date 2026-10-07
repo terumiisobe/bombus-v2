@@ -26,8 +26,8 @@ import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.DeletedColmeia
-import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
-import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
 import com.bombus.colmeia.application.ColmeiaCountProperties
 import com.bombus.colmeia.domain.ColmeiaCount
 import com.bombus.colmeia.domain.ColmeiaSummary
@@ -247,7 +247,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
             vocabularyUseCase = FakeVocabulary,
             listOwnedColmeias = NoopListOwned,
             createColmeia = NoopCreate,
-            updateColmeia = NoopUpdate,
+            recordColmeiaStatus = NoopRecordStatus,
             deleteColmeia = NoopDelete,
             objectMapper = objectMapper,
             countProperties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida")),
@@ -320,9 +320,9 @@ class HandleIncomingWhatsAppMessageServiceTest {
             error("create not used in this test")
     }
 
-    private object NoopUpdate : UpdateColmeiaUseCase {
-        override fun update(command: UpdateColmeiaCommand): ColmeiaSummary =
-            error("update not used in this test")
+    private object NoopRecordStatus : RecordColmeiaStatusUseCase {
+        override fun record(command: RecordColmeiaStatusCommand): ColmeiaSummary =
+            error("record status not used in this test")
     }
 
     private object NoopDelete : DeleteColmeiaUseCase {
