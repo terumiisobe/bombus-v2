@@ -35,7 +35,7 @@ Preconditions:
 ## Gotchas
 
 - Fake `OPENAI_API_KEY` against the real API yields fallback help-ish text, not a trusted count — do not mark count verified from fallback.
-- Default excluded status (`perdida`) affects plain totals; assert against the product rule, not raw table counts.
+- Default excluded statuses (`perdida`, `vendida`) affect plain totals; assert against the product rule, not raw table counts.
 - Species replies may include the scientific name and an inference disclosure when the model matched vocabulary loosely; those are model-phrased from tool JSON (`speciesScientificName`, labels), not extra DB fields.
 - Unknown `speciesId`/`statusId` return tool error JSON instead of a silent zero — a “0 colmeias” reply with a made-up species name is a model failure, not an empty SQL count.
 - README “interim linked greeting” is obsolete; linked behavior is the tool-calling agent.

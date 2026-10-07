@@ -5,7 +5,7 @@ Linked customers can list, create, update status, and hard-delete their own colm
 ## Sub-features
 
 - `list-compact` returns code + species common name + status (no internal id). If more than 10 hives, returns per-species counts instead.
-- `create-hive` inserts a colmeia on the customer’s single meliponário; `code`/`startDate` only when the user provides them (else null); default status `em_desenvolvimento`.
+- `create-hive` inserts a colmeia on the customer’s single meliponário; `code`/`startDate` only when the user provides them (else null); default status `desenvolvendo`.
 - `update-hive` identifies by code and changes status only (appends history).
 - `hard-delete` removes the row after `confirmed=true` (frees the code).
 - `ownership` never mutates another customer’s hives.

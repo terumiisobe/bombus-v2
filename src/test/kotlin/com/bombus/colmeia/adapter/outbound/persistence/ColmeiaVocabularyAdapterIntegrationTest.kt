@@ -45,7 +45,7 @@ class ColmeiaVocabularyAdapterIntegrationTest {
         val statuses = adapter.listStatuses()
 
         assertThat(statuses.map { it.name })
-            .containsExactly("em_desenvolvimento", "recuperando", "estavel", "perdida", "desconhecido")
+            .containsExactly("desenvolvendo", "recuperando", "estavel", "perdida", "desconhecido", "vendida")
     }
 
     companion object {

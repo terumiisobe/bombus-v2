@@ -3,11 +3,11 @@ package com.bombus.colmeia.domain
 data class ColmeiaCountFilter(
     val speciesId: Long? = null,
     val includeStatusId: Long? = null,
-    val excludeStatusId: Long? = null,
+    val excludeStatusIds: Set<Long> = emptySet(),
 ) {
     init {
-        require(includeStatusId == null || excludeStatusId == null) {
-            "includeStatusId and excludeStatusId are mutually exclusive"
+        require(includeStatusId == null || excludeStatusIds.isEmpty()) {
+            "includeStatusId and excludeStatusIds are mutually exclusive"
         }
     }
 }

@@ -46,7 +46,7 @@ def completion(body):
     elif any(k in text for k in ("criar", "nova colmeia", "cadastrar")):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("create_colmeia", {"species": "Jataí"})]}
     elif any(k in text for k in ("atualizar", "mudar status")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "status": "em_desenvolvimento"})]}
+        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "status": "desenvolvendo"})]}
     elif any(k in text for k in ("confirmo", "pode excluir", "pode apagar", "sim, exclua")):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("delete_colmeia", {"code": 1, "confirmed": True})]}
     elif any(k in text for k in ("excluir", "remover", "apagar", "deletar")):

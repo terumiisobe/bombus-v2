@@ -44,7 +44,7 @@ class ChatToolExecutorTest {
         updateColmeia = update,
         deleteColmeia = delete,
         objectMapper = objectMapper,
-        countProperties = ColmeiaCountProperties(defaultExcludedStatus = "perdida"),
+        countProperties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida")),
     )
 
     @Test
@@ -140,7 +140,7 @@ class ChatToolExecutorTest {
         assertEquals("Canudo", json.path("species").asText())
         assertEquals("Scaptotrigona depilis", json.path("speciesScientificName").asText())
         assertEquals("CN", json.path("speciesAbbreviation").asText())
-        assertEquals("perdida", json.path("excludedStatusLabel").asText())
+        assertEquals("perdida, vendida", json.path("excludedStatusLabel").asText())
         assertTrue(json.path("status").isNull)
         assertTrue(json.path("speciesId").isMissingNode)
         assertEquals(
@@ -293,7 +293,7 @@ class ChatToolExecutorTest {
             call = AssistantToolCall(
                 id = "call_u",
                 name = ChatToolNames.UPDATE_COLMEIA,
-                argumentsJson = """{"code":7,"status":"em desenvolvimento"}""",
+                argumentsJson = """{"code":7,"status":"desenvolvendo"}""",
             ),
         )
 
@@ -420,9 +420,10 @@ class ChatToolExecutorTest {
                 SpeciesRef(7, "MT", "Manduri", "Melipona torrida"),
             ),
             statuses = listOf(
-                StatusRef(1, "em_desenvolvimento"),
+                StatusRef(1, "desenvolvendo"),
                 StatusRef(3, "estavel"),
                 StatusRef(4, "perdida"),
+                StatusRef(6, "vendida"),
             ),
         )
     }

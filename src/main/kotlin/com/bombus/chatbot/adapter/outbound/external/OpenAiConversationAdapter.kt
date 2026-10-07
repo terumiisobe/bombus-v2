@@ -125,7 +125,7 @@ class OpenAiConversationAdapter(
             - list_colmeias: lista curta (código, espécie, status). Se houver mais de 10, a ferramenta
               devolve contagem por espécie em vez da lista.
             - create_colmeia: cria hive; species (nome comum) obrigatório; code e startDate só se o
-              usuário informar (senão null); status padrão em_desenvolvimento.
+              usuário informar (senão null); status padrão desenvolvendo.
             - update_colmeia: identifica por code; só altera status (nome; histórico).
             - delete_colmeia: exclusão definitiva (hard delete). Antes de chamar, peça confirmação
               explícita ao usuário e avise que a ação é final/irreversível. Só chame com confirmed=true

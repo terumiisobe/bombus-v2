@@ -44,7 +44,10 @@ class CountColmeiasService(
         } else {
             ColmeiaCountFilter(
                 speciesId = query.speciesId,
-                excludeStatusId = statusLookupPort.findIdByName(properties.defaultExcludedStatus),
+                excludeStatusIds = defaultExcludedIds(),
             )
         }
+
+    private fun defaultExcludedIds(): Set<Long> =
+        properties.defaultExcludedStatuses.mapNotNull { statusLookupPort.findIdByName(it) }.toSet()
 }

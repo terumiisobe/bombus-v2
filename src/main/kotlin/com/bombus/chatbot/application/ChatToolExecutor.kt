@@ -108,7 +108,7 @@ class ChatToolExecutor(
             "speciesScientificName" to speciesRef?.scientificName,
             "speciesAbbreviation" to speciesRef?.abbreviation,
             "status" to statusRef?.name,
-            "excludedStatusLabel" to if (statusRef == null) countProperties.defaultExcludedStatus else null,
+            "excludedStatusLabel" to if (statusRef == null) countProperties.excludedStatusLabel() else null,
             "groupBy" to groupBy.map { it.name },
         )
         count.perSpecies?.let { breakdown ->
@@ -406,13 +406,13 @@ class ChatToolExecutor(
             description =
                 "List the customer's colmeias (code, species common name, status). " +
                     "If the customer has more than 10 hives, returns per-species counts instead of a row list. " +
-                    "Excludes perdida by default.",
+                    "Excludes perdida and vendida by default.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
                     "includeLost" to mapOf(
                         "type" to "boolean",
-                        "description" to "If true, include hives currently status perdida",
+                        "description" to "If true, include hives currently status perdida or vendida",
                     ),
                     "limit" to mapOf(
                         "type" to listOf("integer", "null"),
@@ -432,7 +432,7 @@ class ChatToolExecutor(
             description =
                 "Create a hive for the linked customer. species (common name) required from list_vocabulary. " +
                     "code and startDate only if the user provided them (otherwise null). " +
-                    "status defaults to em_desenvolvimento. Never pass numeric ids.",
+                    "status defaults to desenvolvendo. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -442,7 +442,7 @@ class ChatToolExecutor(
                     ),
                     "status" to mapOf(
                         "type" to listOf("string", "null"),
-                        "description" to "Optional status name; default em_desenvolvimento",
+                        "description" to "Optional status name; default desenvolvendo",
                     ),
                     "code" to mapOf(
                         "type" to listOf("integer", "null"),
@@ -461,8 +461,10 @@ class ChatToolExecutor(
         val UPDATE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.UPDATE_COLMEIA,
             description =
-                "Update an owned hive status. Identify by code. Only status (name) is mutable (appends history). " +
-                    "Species, code, meliponário, and startDate stay fixed. Never pass numeric ids.",
+                "Update an owned active hive status. Identify by code (exactly one active hive; " +
+                    "perdida/vendida with that code are ignored). Only status (name) is mutable (appends history). " +
+                    "Marking perdida or vendida frees the code for reuse on a new hive (code stays on the old row). " +
+                    "Species, meliponário, and startDate stay fixed. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -477,7 +479,8 @@ class ChatToolExecutor(
         val DELETE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.DELETE_COLMEIA,
             description =
-                "Permanently delete an owned hive by code (hard delete, irreversible). " +
+                "Permanently delete an owned active hive by code (hard delete, irreversible). " +
+                    "Exactly one active hive for that code; perdida/vendida with the same code are ignored. " +
                     "Only call after the user explicitly confirmed. Pass confirmed=true.",
             parametersJsonSchema = mapOf(
                 "type" to "object",

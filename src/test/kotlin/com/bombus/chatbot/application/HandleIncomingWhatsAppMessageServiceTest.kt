@@ -250,7 +250,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
             updateColmeia = NoopUpdate,
             deleteColmeia = NoopDelete,
             objectMapper = objectMapper,
-            countProperties = ColmeiaCountProperties(defaultExcludedStatus = "perdida"),
+            countProperties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida")),
         )
         return HandleIncomingWhatsAppMessageService(
             resolveCustomer = FakeResolveCustomer(resolution),

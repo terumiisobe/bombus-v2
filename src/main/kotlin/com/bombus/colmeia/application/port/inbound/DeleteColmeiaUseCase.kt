@@ -1,7 +1,9 @@
 package com.bombus.colmeia.application.port.inbound
 
 /**
- * Hard-delete an owned hive by code. Callers (chat tools) must obtain user confirmation first.
+ * Hard-delete an owned hive by code — must match exactly one **active** hive
+ * (perdida/vendida rows with the same code are ignored and never deleted).
+ * Callers (chat tools) must obtain user confirmation first.
  */
 interface DeleteColmeiaUseCase {
     fun delete(command: DeleteColmeiaCommand): DeletedColmeia

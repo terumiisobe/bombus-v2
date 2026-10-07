@@ -19,8 +19,11 @@ twilio:
   public-base-url: ${TWILIO_PUBLIC_BASE_URL}
 
 colmeia:
-  # Status excluded by default from a plain/species count (resolved to an id at runtime).
-  default-excluded-status: ${COLMEIA_DEFAULT_EXCLUDED_STATUS:perdida}
+  # Statuses excluded by default from a plain/species count and default list (resolved at runtime).
+  # The same set releases hive codes for reuse via soft uniqueness (codes stay on the row).
+  default-excluded-statuses:
+    - perdida
+    - vendida
 
 chatbot:
   session:

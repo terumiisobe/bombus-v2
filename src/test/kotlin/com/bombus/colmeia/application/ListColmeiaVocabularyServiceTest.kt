@@ -15,8 +15,9 @@ class ListColmeiaVocabularyServiceTest {
             SpeciesRef(id = 2, abbreviation = "EM", commonName = "Mirim emerina", scientificName = "Plebeia emerina"),
         )
         val statuses = listOf(
-            StatusRef(id = 1, name = "em_desenvolvimento"),
+            StatusRef(id = 1, name = "desenvolvendo"),
             StatusRef(id = 4, name = "perdida"),
+            StatusRef(id = 6, name = "vendida"),
         )
         val service = ListColmeiaVocabularyService(FakeVocabularyPort(species, statuses))
 

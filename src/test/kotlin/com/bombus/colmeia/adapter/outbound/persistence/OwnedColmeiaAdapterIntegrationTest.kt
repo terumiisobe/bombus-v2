@@ -38,7 +38,9 @@ class OwnedColmeiaAdapterIntegrationTest {
     private lateinit var jdbcTemplate: JdbcTemplate
 
     private val estavelId: Long get() = statusLookup.findIdByName("estavel")!!
-    private val emDesenvolvimentoId: Long get() = statusLookup.findIdByName("em_desenvolvimento")!!
+    private val desenvolvendoId: Long get() = statusLookup.findIdByName("desenvolvendo")!!
+    private val perdidaId: Long get() = statusLookup.findIdByName("perdida")!!
+    private val vendidaId: Long get() = statusLookup.findIdByName("vendida")!!
 
     @BeforeEach
     fun seed() {
@@ -53,7 +55,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             speciesId = 1,
             meliponarioId = MEL,
             startDate = Instant.parse("2026-01-01T00:00:00Z"),
-            initialStatusId = emDesenvolvimentoId,
+            initialStatusId = desenvolvendoId,
         )
         assertThat(adapter.isCodeTaken(MEL, 1)).isTrue()
 
@@ -69,9 +71,70 @@ class OwnedColmeiaAdapterIntegrationTest {
         )
         assertThat(reused.code).isEqualTo(1)
         assertThat(reused.id).isNotEqualTo(first.id)
-        assertThat(adapter.listByOwner(OWNER, excludeStatusId = null, limit = 20, offset = 0))
+        assertThat(adapter.listByOwner(OWNER, excludeStatusIds = emptyList(), limit = 20, offset = 0))
             .extracting("id")
             .containsExactly(reused.id)
+    }
+
+    @Test
+    fun `perdida keeps code but soft-uniqueness frees it for reuse`() {
+        val first = adapter.insert(
+            code = 9,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = Instant.parse("2026-01-01T00:00:00Z"),
+            initialStatusId = desenvolvendoId,
+        )
+        assertThat(adapter.isCodeTaken(MEL, 9)).isTrue()
+
+        val lost = adapter.appendStatus(first.id, perdidaId, Instant.parse("2026-02-01T00:00:00Z"))!!
+        assertThat(lost.code).isEqualTo(9)
+        assertThat(adapter.isCodeTaken(MEL, 9, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
+
+        val reused = adapter.insert(9, 2, MEL, null, estavelId)
+        assertThat(reused.code).isEqualTo(9)
+        assertThat(reused.id).isNotEqualTo(first.id)
+        assertThat(adapter.findByCodeForOwner(OWNER, 9)).hasSize(2)
+    }
+
+    @Test
+    fun `vendida keeps code but soft-uniqueness frees it for reuse`() {
+        val first = adapter.insert(
+            code = 8,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = Instant.parse("2026-01-01T00:00:00Z"),
+            initialStatusId = desenvolvendoId,
+        )
+        val sold = adapter.appendStatus(first.id, vendidaId, Instant.parse("2026-02-01T00:00:00Z"))!!
+        assertThat(sold.code).isEqualTo(8)
+        assertThat(adapter.isCodeTaken(MEL, 8, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
+
+        val reused = adapter.insert(8, 2, MEL, null, estavelId)
+        assertThat(reused.code).isEqualTo(8)
+        assertThat(adapter.findByCodeForOwner(OWNER, 8)).extracting("id")
+            .containsExactlyInAnyOrder(first.id, reused.id)
+    }
+
+    @Test
+    fun `list excludes multiple statuses while keeping sem status`() {
+        val living = adapter.insert(1, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), desenvolvendoId)
+        val lost = adapter.insert(2, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), perdidaId)
+        val sold = adapter.insert(3, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), vendidaId)
+        jdbcTemplate.update(
+            "INSERT INTO colmeia (id, code, species_id, meliponario_id) VALUES (?, ?, ?, ?)",
+            99L, 4, 1L, MEL,
+        )
+
+        val listed = adapter.listByOwner(
+            OWNER,
+            excludeStatusIds = listOf(perdidaId, vendidaId),
+            limit = 20,
+            offset = 0,
+        )
+
+        assertThat(listed).extracting("id").containsExactly(living.id, 99L)
+        assertThat(listed).extracting("id").doesNotContain(lost.id, sold.id)
     }
 
     @Test
@@ -84,7 +147,7 @@ class OwnedColmeiaAdapterIntegrationTest {
 
         assertThat(adapter.findByCodeForOwner(OWNER, 2)).hasSize(1)
         assertThat(adapter.findByCodeForOwner(OTHER, 2)).hasSize(1)
-        assertThat(adapter.listByOwner(OWNER, null, 20, 0)).hasSize(1)
+        assertThat(adapter.listByOwner(OWNER, emptyList(), 20, 0)).hasSize(1)
         assertThat(adapter.deleteByIdForOwner(OTHER, adapter.findByCodeForOwner(OWNER, 2).first().id)).isFalse()
     }
 

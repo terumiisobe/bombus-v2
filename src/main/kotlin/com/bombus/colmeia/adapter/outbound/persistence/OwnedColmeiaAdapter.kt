@@ -24,7 +24,7 @@ class OwnedColmeiaAdapter(
 
     override fun listByOwner(
         userId: Long,
-        excludeStatusId: Long?,
+        excludeStatusIds: Collection<Long>,
         limit: Int,
         offset: Int,
     ): List<ColmeiaSummary> =
@@ -32,7 +32,8 @@ class OwnedColmeiaAdapter(
             LIST_SQL,
             MapSqlParameterSource()
                 .addValue("userId", userId)
-                .addValue("excludeStatusId", excludeStatusId)
+                .addValue("hasExclude", excludeStatusIds.isNotEmpty())
+                .addValue("excludeStatusIds", excludeStatusIds.ifEmpty { listOf(-1L) })
                 .addValue("limit", limit)
                 .addValue("offset", offset),
             SUMMARY_MAPPER,
@@ -54,13 +55,16 @@ class OwnedColmeiaAdapter(
         meliponarioId: Long,
         code: Int,
         exceptColmeiaId: Long?,
+        ignoreStatusIds: Collection<Long>,
     ): Boolean {
         val count = jdbc.queryForObject(
             CODE_TAKEN_SQL,
             MapSqlParameterSource()
                 .addValue("meliponarioId", meliponarioId)
                 .addValue("code", code)
-                .addValue("exceptColmeiaId", exceptColmeiaId),
+                .addValue("exceptColmeiaId", exceptColmeiaId)
+                .addValue("hasIgnore", ignoreStatusIds.isNotEmpty())
+                .addValue("ignoreStatusIds", ignoreStatusIds.ifEmpty { listOf(-1L) }),
             Long::class.java,
         ) ?: 0L
         return count > 0
@@ -163,10 +167,15 @@ class OwnedColmeiaAdapter(
             $LATEST_STATUS
         """
 
+        // Keep "sem status" (NULL) when excluding; NOT IN alone would drop NULL rows.
         val LIST_SQL = """
             $SUMMARY_SELECT
             WHERE m.owner_id = :userId
-              AND (CAST(:excludeStatusId AS BIGINT) IS NULL OR cur.status_id IS DISTINCT FROM CAST(:excludeStatusId AS BIGINT))
+              AND (
+                CAST(:hasExclude AS BOOLEAN) = FALSE
+                OR cur.status_id IS NULL
+                OR cur.status_id NOT IN (:excludeStatusIds)
+              )
             ORDER BY c.code NULLS LAST, c.id
             LIMIT :limit OFFSET :offset
         """.trimIndent()
@@ -186,9 +195,15 @@ class OwnedColmeiaAdapter(
         val CODE_TAKEN_SQL = """
             SELECT COUNT(*)
             FROM colmeia c
+            $LATEST_STATUS
             WHERE c.meliponario_id = :meliponarioId
               AND c.code = :code
               AND (CAST(:exceptColmeiaId AS BIGINT) IS NULL OR c.id IS DISTINCT FROM CAST(:exceptColmeiaId AS BIGINT))
+              AND (
+                CAST(:hasIgnore AS BOOLEAN) = FALSE
+                OR cur.status_id IS NULL
+                OR cur.status_id NOT IN (:ignoreStatusIds)
+              )
         """.trimIndent()
 
         val SUMMARY_MAPPER = RowMapper { rs, _ ->

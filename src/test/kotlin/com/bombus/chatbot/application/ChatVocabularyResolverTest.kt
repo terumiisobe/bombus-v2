@@ -17,8 +17,9 @@ class ChatVocabularyResolverTest {
     )
 
     private val statuses = listOf(
-        StatusRef(1, "em_desenvolvimento"),
+        StatusRef(1, "desenvolvendo"),
         StatusRef(3, "estavel"),
+        StatusRef(6, "vendida"),
     )
 
     @Test
@@ -50,10 +51,19 @@ class ChatVocabularyResolverTest {
     }
 
     @Test
-    fun `resolves status equating underscore and spaces`() {
-        val result = ChatVocabularyResolver.resolveStatus("Em Desenvolvimento", statuses)
+    fun `resolves status ignoring case`() {
+        val result = ChatVocabularyResolver.resolveStatus("Desenvolvendo", statuses)
         assertIs<ChatVocabularyResolver.StatusResolution.Found>(result)
         assertEquals(1L, result.status.id)
+    }
+
+    @Test
+    fun `resolves status equating underscore and spaces`() {
+        // Underscore/space folding still matters for multi-word seeded names (e.g. future labels).
+        val withUnderscore = statuses + StatusRef(9, "em_recuperacao")
+        val result = ChatVocabularyResolver.resolveStatus("Em Recuperacao", withUnderscore)
+        assertIs<ChatVocabularyResolver.StatusResolution.Found>(result)
+        assertEquals(9L, result.status.id)
     }
 
     @Test

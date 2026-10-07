@@ -7,7 +7,8 @@ interface UpdateColmeiaUseCase {
 }
 
 /**
- * Field contract (update): identify by code.
+ * Field contract (update): identify by code — must match exactly one **active** hive
+ * (perdida/vendida rows with the same code are ignored and never updated).
  * Mutable: statusId only (append history). Everything else is fixed.
  */
 data class UpdateColmeiaCommand(
