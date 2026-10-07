@@ -75,6 +75,26 @@ class OpenAiConversationAdapterTest {
             .doesNotContain("statusId")
             .contains("speciesScientificName")
             .contains("excludedStatusLabel")
+            .contains("Primeira interação")
+            .contains("listar, adicionar, excluir")
+            .contains("atualizar o status")
+            .contains("é só me avisar!")
+            .contains("Tom e estilo")
+    }
+
+    @Test
+    fun `system prompt discourages pushy closers and requires first-turn capability overview`() {
+        enqueueFinalReply("Oi! Posso listar, adicionar, excluir, atualizar o status e contar suas colmeias.")
+
+        adapter.complete(listOf(AgentMessage.User("oi")), tools)
+
+        val system = objectMapper.readTree(server.takeRequest().body.readUtf8())
+            .path("messages").path(0).path("content").asText()
+        assertThat(system)
+            .contains("histórico da conversa estiver vazio")
+            .contains("é só me avisar!")
+            .contains("se precisar de mais informações")
+            .contains("Não repita esse overview em todo turno")
     }
 
     @Test
