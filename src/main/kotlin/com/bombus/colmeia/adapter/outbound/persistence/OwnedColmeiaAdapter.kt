@@ -17,7 +17,7 @@ class OwnedColmeiaAdapter(
 
     override fun listMeliponarioIdsByOwner(userId: Long): List<Long> =
         jdbc.queryForList(
-            "SELECT id FROM meliponario WHERE owner_id = :userId",
+            LIST_ACCESSIBLE_MELIPONARIO_IDS_SQL,
             MapSqlParameterSource("userId", userId),
             Long::class.java,
         )
@@ -119,13 +119,7 @@ class OwnedColmeiaAdapter(
 
     override fun deleteByIdForOwner(userId: Long, colmeiaId: Long): Boolean {
         val updated = jdbc.update(
-            """
-            DELETE FROM colmeia c
-            USING meliponario m
-            WHERE c.id = :colmeiaId
-              AND c.meliponario_id = m.id
-              AND m.owner_id = :userId
-            """.trimIndent(),
+            DELETE_ACCESSIBLE_SQL,
             MapSqlParameterSource()
                 .addValue("colmeiaId", colmeiaId)
                 .addValue("userId", userId),
@@ -163,14 +157,20 @@ class OwnedColmeiaAdapter(
                    (SELECT s.name FROM status_colmeia s WHERE s.id = cur.status_id) AS status_name
             FROM colmeia c
             JOIN especie e ON e.id = c.species_id
-            JOIN meliponario m ON m.id = c.meliponario_id
             $LATEST_STATUS
         """
+
+        val LIST_ACCESSIBLE_MELIPONARIO_IDS_SQL = """
+            SELECT m.id
+            FROM meliponario m
+            WHERE $ACCESSIBLE_MELIPONARIO
+            ORDER BY m.id
+        """.trimIndent()
 
         // Keep "sem status" (NULL) when excluding; NOT IN alone would drop NULL rows.
         val LIST_SQL = """
             $SUMMARY_SELECT
-            WHERE m.owner_id = :userId
+            WHERE $ACCESSIBLE_COLMEIA
               AND (
                 CAST(:hasExclude AS BOOLEAN) = FALSE
                 OR cur.status_id IS NULL
@@ -187,9 +187,15 @@ class OwnedColmeiaAdapter(
 
         val FIND_BY_CODE_SQL = """
             $SUMMARY_SELECT
-            WHERE m.owner_id = :userId
+            WHERE $ACCESSIBLE_COLMEIA
               AND c.code = :code
             ORDER BY c.id
+        """.trimIndent()
+
+        val DELETE_ACCESSIBLE_SQL = """
+            DELETE FROM colmeia c
+            WHERE c.id = :colmeiaId
+              AND $ACCESSIBLE_COLMEIA
         """.trimIndent()
 
         val CODE_TAKEN_SQL = """

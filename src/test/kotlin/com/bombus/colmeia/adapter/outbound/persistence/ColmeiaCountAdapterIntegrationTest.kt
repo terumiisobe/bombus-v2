@@ -44,12 +44,14 @@ class ColmeiaCountAdapterIntegrationTest {
 
     @BeforeEach
     fun seed() {
-        jdbcTemplate.update("INSERT INTO usuario (id, email, password_hash) VALUES (?, ?, ?)", OWNER, "o@x.test", "h")
-        jdbcTemplate.update("INSERT INTO usuario (id, email, password_hash) VALUES (?, ?, ?)", OTHER, "p@x.test", "h")
-        // Two meliponarios for OWNER (multi-meliponario sum), one for OTHER (isolation).
-        jdbcTemplate.update("INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)", MEL_A, "A", "addr", OWNER)
-        jdbcTemplate.update("INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)", MEL_B, "B", "addr", OWNER)
-        jdbcTemplate.update("INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)", MEL_OTHER, "C", "addr", OTHER)
+        insertUsuario(OWNER, "o@x.test")
+        insertUsuario(OTHER, "p@x.test")
+        insertUsuario(MEMBER, "m@x.test")
+        insertMeliponario(MEL_A, OWNER, "A")
+        insertMeliponario(MEL_B, OWNER, "B")
+        insertMeliponario(MEL_OTHER, OTHER, "C")
+        addMember(MEL_A, MEMBER)
+        insertMeliponarioWithoutMembership(MEL_ORPHAN, OWNER)
 
         // c1: species 1, mel A — history perdida then estavel later → current estavel (latest wins).
         insertColmeia(id = 1, speciesId = 1, meliponarioId = MEL_A)
@@ -71,13 +73,35 @@ class ColmeiaCountAdapterIntegrationTest {
         insertColmeia(id = 5, speciesId = 2, meliponarioId = MEL_B)
         insertStatus(colmeiaId = 5, statusId = STATUS_PERDIDA, at = "2024-01-01T10:00:00Z")
 
-        // c6: species 1, OTHER owner — must never be counted for OWNER.
         insertColmeia(id = 6, speciesId = 1, meliponarioId = MEL_OTHER)
         insertStatus(colmeiaId = 6, statusId = STATUS_ESTAVEL, at = "2024-01-01T10:00:00Z")
 
         // c7: species 2, mel B — current vendida (also default-excluded).
         insertColmeia(id = 7, speciesId = 2, meliponarioId = MEL_B)
         insertStatus(colmeiaId = 7, statusId = STATUS_VENDIDA, at = "2024-01-01T10:00:00Z")
+
+        insertColmeia(id = 8, speciesId = 1, meliponarioId = MEL_ORPHAN)
+        insertStatus(colmeiaId = 8, statusId = STATUS_ESTAVEL, at = "2024-01-01T10:00:00Z")
+    }
+
+    @Test
+    fun `co-member who is not owner counts that yard's hives`() {
+        val count = adapter.countByOwner(
+            MEMBER,
+            ColmeiaCountFilter(excludeStatusIds = setOf(perdidaId, vendidaId)),
+        )
+
+        assertThat(count).isEqualTo(2)
+    }
+
+    @Test
+    fun `owner_id without membership grants nothing`() {
+        val count = adapter.countByOwner(
+            OWNER,
+            ColmeiaCountFilter(excludeStatusIds = setOf(perdidaId, vendidaId)),
+        )
+
+        assertThat(count).isEqualTo(3)
     }
 
     @Test
@@ -160,6 +184,35 @@ class ColmeiaCountAdapterIntegrationTest {
         assertThat(perStatus.sumOf { it.count }).isEqualTo(6)
     }
 
+    private fun insertUsuario(id: Long, email: String) {
+        jdbcTemplate.update(
+            "INSERT INTO usuario (id, email, password_hash) VALUES (?, ?, ?)",
+            id, email, "h",
+        )
+    }
+
+    private fun insertMeliponario(id: Long, owner: Long, name: String) {
+        jdbcTemplate.update(
+            "INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)",
+            id, name, "addr", owner,
+        )
+        addMember(id, owner)
+    }
+
+    private fun insertMeliponarioWithoutMembership(id: Long, ownerId: Long) {
+        jdbcTemplate.update(
+            "INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)",
+            id, "orphan", "addr", ownerId,
+        )
+    }
+
+    private fun addMember(meliponarioId: Long, usuarioId: Long) {
+        jdbcTemplate.update(
+            "INSERT INTO meliponario_membro (usuario_id, meliponario_id) VALUES (?, ?)",
+            usuarioId, meliponarioId,
+        )
+    }
+
     private fun insertColmeia(id: Long, speciesId: Long, meliponarioId: Long) {
         jdbcTemplate.update(
             "INSERT INTO colmeia (id, code, species_id, meliponario_id) VALUES (?, ?, ?, ?)",
@@ -177,9 +230,11 @@ class ColmeiaCountAdapterIntegrationTest {
     companion object {
         private const val OWNER = 1L
         private const val OTHER = 2L
+        private const val MEMBER = 3L
         private const val MEL_A = 10L
         private const val MEL_B = 11L
         private const val MEL_OTHER = 12L
+        private const val MEL_ORPHAN = 13L
 
         private const val STATUS_DESENVOLVENDO = 1L
         private const val STATUS_ESTAVEL = 3L

@@ -44,8 +44,8 @@ class OwnedColmeiaAdapterIntegrationTest {
 
     @BeforeEach
     fun seed() {
-        jdbcTemplate.update("INSERT INTO usuario (id, email, password_hash) VALUES (?, ?, ?)", OWNER, "o@x.test", "h")
-        jdbcTemplate.update("INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)", MEL, "A", "addr", OWNER)
+        insertUsuario(OWNER, "o@x.test")
+        insertMeliponario(MEL, OWNER)
     }
 
     @Test
@@ -87,7 +87,8 @@ class OwnedColmeiaAdapterIntegrationTest {
         )
         assertThat(adapter.isCodeTaken(MEL, 9)).isTrue()
 
-        val lost = adapter.appendStatus(first.id, perdidaId, Instant.parse("2026-02-01T00:00:00Z"))!!
+        // Must be after insert's NOW() status row so "latest" is perdida.
+        val lost = adapter.appendStatus(first.id, perdidaId, Instant.now().plusSeconds(60))!!
         assertThat(lost.code).isEqualTo(9)
         assertThat(adapter.isCodeTaken(MEL, 9, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
@@ -106,7 +107,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             startDate = Instant.parse("2026-01-01T00:00:00Z"),
             initialStatusId = desenvolvendoId,
         )
-        val sold = adapter.appendStatus(first.id, vendidaId, Instant.parse("2026-02-01T00:00:00Z"))!!
+        val sold = adapter.appendStatus(first.id, vendidaId, Instant.now().plusSeconds(60))!!
         assertThat(sold.code).isEqualTo(8)
         assertThat(adapter.isCodeTaken(MEL, 8, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
@@ -139,8 +140,8 @@ class OwnedColmeiaAdapterIntegrationTest {
 
     @Test
     fun `ownership isolates find by code and list`() {
-        jdbcTemplate.update("INSERT INTO usuario (id, email, password_hash) VALUES (?, ?, ?)", OTHER, "p@x.test", "h")
-        jdbcTemplate.update("INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)", MEL_OTHER, "B", "addr", OTHER)
+        insertUsuario(OTHER, "p@x.test")
+        insertMeliponario(MEL_OTHER, OTHER)
 
         adapter.insert(2, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
         adapter.insert(2, 1, MEL_OTHER, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
@@ -151,11 +152,111 @@ class OwnedColmeiaAdapterIntegrationTest {
         assertThat(adapter.deleteByIdForOwner(OTHER, adapter.findByCodeForOwner(OWNER, 2).first().id)).isFalse()
     }
 
+    @Test
+    fun `co-member can find list and delete a hive in a shared yard`() {
+        insertUsuario(MEMBER, "m@x.test")
+        addMember(MEL, MEMBER)
+        val hive = adapter.insert(3, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+
+        assertThat(adapter.findByCodeForOwner(MEMBER, 3)).extracting("id").containsExactly(hive.id)
+        assertThat(adapter.listByOwner(MEMBER, emptyList(), 20, 0)).extracting("id").containsExactly(hive.id)
+        assertThat(adapter.deleteByIdForOwner(MEMBER, hive.id)).isTrue()
+        assertThat(colmeiaCount(hive.id)).isEqualTo(0L)
+    }
+
+    @Test
+    fun `non-member delete returns false and the row survives`() {
+        insertUsuario(OTHER, "p@x.test")
+        val hive = adapter.insert(3, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+
+        assertThat(adapter.deleteByIdForOwner(OTHER, hive.id)).isFalse()
+        assertThat(colmeiaCount(hive.id)).isEqualTo(1L)
+    }
+
+    @Test
+    fun `revoked member loses access`() {
+        insertUsuario(MEMBER, "m@x.test")
+        addMember(MEL, MEMBER)
+        val hive = adapter.insert(4, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+        assertThat(adapter.findByCodeForOwner(MEMBER, 4)).extracting("id").containsExactly(hive.id)
+
+        jdbcTemplate.update(
+            "DELETE FROM meliponario_membro WHERE usuario_id = ? AND meliponario_id = ?",
+            MEMBER, MEL,
+        )
+
+        assertThat(adapter.findByCodeForOwner(MEMBER, 4)).isEmpty()
+        assertThat(adapter.listByOwner(MEMBER, emptyList(), 20, 0)).isEmpty()
+        assertThat(adapter.findByCodeForOwner(OWNER, 4)).extracting("id").containsExactly(hive.id)
+    }
+
+    @Test
+    fun `accessible yards are listed ascending by id`() {
+        insertUsuario(OTHER, "p@x.test")
+        insertUsuario(MEMBER, "m@x.test")
+        insertMeliponario(30L, OTHER)
+        insertMeliponario(20L, OTHER)
+        addMember(30L, MEMBER)
+        addMember(20L, MEMBER)
+
+        assertThat(adapter.listMeliponarioIdsByOwner(MEMBER)).containsExactly(20L, 30L)
+    }
+
+    @Test
+    fun `listMeliponarioIdsByOwner excludes yards the user is not a member of`() {
+        insertUsuario(OTHER, "p@x.test")
+        insertMeliponario(MEL_OTHER, OTHER)
+
+        assertThat(adapter.listMeliponarioIdsByOwner(OWNER)).containsExactly(MEL)
+    }
+
+    @Test
+    fun `owner_id without membership grants nothing for list find and delete`() {
+        jdbcTemplate.update(
+            "INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)",
+            MEL_ORPHAN, "orphan", "addr", OWNER,
+        )
+        val hive = adapter.insert(5, 1, MEL_ORPHAN, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+
+        assertThat(adapter.listMeliponarioIdsByOwner(OWNER)).containsExactly(MEL)
+        assertThat(adapter.findByCodeForOwner(OWNER, 5)).isEmpty()
+        assertThat(adapter.listByOwner(OWNER, emptyList(), 20, 0)).extracting("id").doesNotContain(hive.id)
+        assertThat(adapter.deleteByIdForOwner(OWNER, hive.id)).isFalse()
+        assertThat(colmeiaCount(hive.id)).isEqualTo(1L)
+    }
+
+    private fun insertUsuario(id: Long, email: String) {
+        jdbcTemplate.update(
+            "INSERT INTO usuario (id, email, password_hash) VALUES (?, ?, ?)",
+            id, email, "h",
+        )
+    }
+
+    private fun insertMeliponario(id: Long, owner: Long) {
+        jdbcTemplate.update(
+            "INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)",
+            id, "m$id", "addr", owner,
+        )
+        addMember(id, owner)
+    }
+
+    private fun addMember(meliponarioId: Long, usuarioId: Long) {
+        jdbcTemplate.update(
+            "INSERT INTO meliponario_membro (usuario_id, meliponario_id) VALUES (?, ?)",
+            usuarioId, meliponarioId,
+        )
+    }
+
+    private fun colmeiaCount(id: Long): Long =
+        jdbcTemplate.queryForObject("SELECT COUNT(*) FROM colmeia WHERE id = ?", Long::class.java, id)!!
+
     companion object {
         private const val OWNER = 1L
         private const val OTHER = 2L
+        private const val MEMBER = 3L
         private const val MEL = 10L
         private const val MEL_OTHER = 11L
+        private const val MEL_ORPHAN = 12L
 
         @Container
         @ServiceConnection

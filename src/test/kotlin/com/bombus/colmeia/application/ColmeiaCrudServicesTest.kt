@@ -41,6 +41,16 @@ class ColmeiaCrudServicesTest {
     }
 
     @Test
+    fun `create targets the first accessible yard`() {
+        val port = FakeOwnedPort().apply { meliponarioIds = listOf(10L, 11L) }
+        val service = createService(port)
+
+        val created = service.create(CreateColmeiaCommand(userId = 1L, speciesId = 1L))
+
+        assertEquals(10L, created.meliponarioId)
+    }
+
+    @Test
     fun `create rejects code held by another active hive`() {
         val port = FakeOwnedPort().apply {
             meliponarioIds = listOf(10L)

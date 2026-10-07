@@ -4,11 +4,20 @@ import com.bombus.colmeia.domain.ColmeiaSummary
 import java.time.Instant
 
 /**
- * Persistence for owner-scoped hive CRUD.
+ * Hive CRUD scoped to the meliponários a usuário is a member of.
+ *
+ * "Owner" in a method name means "member of the colmeia's meliponário".
+ * meliponario.owner_id grants nothing.
+ *
+ * Methods taking `userId` enforce membership in their own SQL.
+ * [isCodeTaken], [insert] and [appendStatus] trust their caller to have resolved the
+ * meliponário or colmeia id through a `userId`-scoped method in the same use-case call.
+ *
  * Delete is a hard DELETE of the colmeia row (cascades history/location).
  */
 interface OwnedColmeiaPort {
 
+    /** Ascending by id. The first element is the default target for create. */
     fun listMeliponarioIdsByOwner(userId: Long): List<Long>
 
     fun listByOwner(

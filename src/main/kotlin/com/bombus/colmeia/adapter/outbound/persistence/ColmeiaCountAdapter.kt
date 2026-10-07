@@ -33,8 +33,7 @@ class ColmeiaCountAdapter(
 
     private companion object {
         // Keep "sem status" (NULL) when excluding; NOT IN alone would drop NULL rows.
-        private const val LATEST_STATUS_AND_FILTERS = """
-            JOIN meliponario m ON m.id = c.meliponario_id
+        private val LATEST_STATUS_AND_FILTERS = """
             LEFT JOIN LATERAL (
                 SELECT h.status_id
                 FROM colmeia_status_historico h
@@ -42,7 +41,7 @@ class ColmeiaCountAdapter(
                 ORDER BY h.recorded_at DESC, h.id DESC
                 LIMIT 1
             ) cur ON true
-            WHERE m.owner_id = :userId
+            WHERE $ACCESSIBLE_COLMEIA
               AND (CAST(:speciesId AS BIGINT) IS NULL OR c.species_id = CAST(:speciesId AS BIGINT))
               AND (CAST(:includeStatusId AS BIGINT) IS NULL OR cur.status_id = CAST(:includeStatusId AS BIGINT))
               AND (
