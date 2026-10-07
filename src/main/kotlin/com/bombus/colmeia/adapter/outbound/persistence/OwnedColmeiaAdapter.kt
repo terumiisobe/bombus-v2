@@ -106,9 +106,9 @@ class OwnedColmeiaAdapter(
         val updated = jdbc.update(
             """
             INSERT INTO colmeia_status_historico (
-                colmeia_id, status_id, recorded_at, recorded_by_user_id, note, source
+                colmeia_id, status_id, recorded_at, recorded_by_user_id, note
             )
-            SELECT :id, :statusId, :at, :recordedByUserId, :note, :source
+            SELECT :id, :statusId, :at, :recordedByUserId, :note
             WHERE EXISTS (SELECT 1 FROM colmeia WHERE id = :id)
             """.trimIndent(),
             MapSqlParameterSource()
@@ -116,8 +116,7 @@ class OwnedColmeiaAdapter(
                 .addValue("statusId", append.statusId)
                 .addValue("at", Timestamp.from(append.recordedAt))
                 .addValue("recordedByUserId", append.recordedByUserId)
-                .addValue("note", append.note)
-                .addValue("source", append.source),
+                .addValue("note", append.note),
         )
         if (updated == 0) return null
         return findByIdUnchecked(append.colmeiaId)

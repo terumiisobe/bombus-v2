@@ -146,7 +146,7 @@ class OwnedColmeiaAdapterIntegrationTest {
     }
 
     @Test
-    fun `appendStatus stores actor note and source and updates current status`() {
+    fun `appendStatus stores actor and note and updates current status`() {
         val created = adapter.insert(
             code = 13,
             speciesId = 1,
@@ -165,7 +165,6 @@ class OwnedColmeiaAdapterIntegrationTest {
                 recordedAt = recordedAt,
                 recordedByUserId = OWNER,
                 note = "forte, bastante forrageio",
-                source = "whatsapp",
             ),
         )
 
@@ -175,7 +174,7 @@ class OwnedColmeiaAdapterIntegrationTest {
 
         val row = jdbcTemplate.queryForMap(
             """
-            SELECT status_id, recorded_at, recorded_by_user_id, note, source
+            SELECT status_id, recorded_at, recorded_by_user_id, note
             FROM colmeia_status_historico
             WHERE colmeia_id = ?
             ORDER BY recorded_at DESC, id DESC
@@ -187,7 +186,6 @@ class OwnedColmeiaAdapterIntegrationTest {
         assertThat((row["recorded_at"] as Timestamp).toInstant()).isEqualTo(recordedAt)
         assertThat(row["recorded_by_user_id"] as Long).isEqualTo(OWNER)
         assertThat(row["note"] as String).isEqualTo("forte, bastante forrageio")
-        assertThat(row["source"] as String).isEqualTo("whatsapp")
     }
 
     @Test
@@ -211,7 +209,7 @@ class OwnedColmeiaAdapterIntegrationTest {
         assertThat(updated!!.statusId).isEqualTo(estavelId)
         val row = jdbcTemplate.queryForMap(
             """
-            SELECT recorded_by_user_id, note, source
+            SELECT recorded_by_user_id, note
             FROM colmeia_status_historico
             WHERE colmeia_id = ?
             ORDER BY recorded_at DESC, id DESC
@@ -221,7 +219,6 @@ class OwnedColmeiaAdapterIntegrationTest {
         )
         assertThat(row["recorded_by_user_id"]).isNull()
         assertThat(row["note"]).isNull()
-        assertThat(row["source"]).isNull()
     }
 
     @Test
@@ -241,19 +238,17 @@ class OwnedColmeiaAdapterIntegrationTest {
                 colmeiaId = created.id,
                 statusId = estavelId,
                 recordedAt = later,
-                source = "whatsapp",
             ),
         )
         // Older row inserted after the newer one — sort must use recorded_at, not insert order.
         jdbcTemplate.update(
             """
-            INSERT INTO colmeia_status_historico (colmeia_id, status_id, recorded_at, source)
-            VALUES (?, ?, CAST(? AS timestamptz), ?)
+            INSERT INTO colmeia_status_historico (colmeia_id, status_id, recorded_at)
+            VALUES (?, ?, CAST(? AS timestamptz))
             """.trimIndent(),
             created.id,
             desenvolvendoId,
             earlier.toString(),
-            "admin",
         )
 
         val current = adapter.findByCodeForOwner(OWNER, 15).single()

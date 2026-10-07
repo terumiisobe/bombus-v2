@@ -74,7 +74,6 @@ CREATE TABLE colmeia_status_historico (
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   recorded_by_user_id BIGINT NULL,
   note VARCHAR(280) NULL,
-  source VARCHAR(50) NULL,
   FOREIGN KEY (colmeia_id) REFERENCES colmeia(id) ON DELETE CASCADE,
   FOREIGN KEY (status_id) REFERENCES status_colmeia(id),
   FOREIGN KEY (recorded_by_user_id) REFERENCES usuario(id)

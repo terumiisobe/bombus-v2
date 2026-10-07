@@ -12,5 +12,4 @@ data class AppendColmeiaStatus(
     val recordedAt: Instant,
     val recordedByUserId: Long? = null,
     val note: String? = null,
-    val source: String? = null,
 )
