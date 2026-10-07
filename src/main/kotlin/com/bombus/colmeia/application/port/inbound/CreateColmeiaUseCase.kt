@@ -13,7 +13,7 @@ interface CreateColmeiaUseCase {
  * - statusId: user optional; default "desenvolvendo"
  * - code: user optional; otherwise null (no auto-assign)
  * - startDate: user optional; otherwise null
- * - meliponarioId: derived (one meliponário per user)
+ * - meliponarioId: derived; the lowest-id meliponário the user is a member of
  * - id: generated
  */
 data class CreateColmeiaCommand(

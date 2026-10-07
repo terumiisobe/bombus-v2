@@ -5,7 +5,7 @@ Linked customers can list, create, update status, and hard-delete their own colm
 ## Sub-features
 
 - `list-compact` returns code + species common name + status (no internal id). If more than 10 hives, returns per-species counts instead.
-- `create-hive` inserts a colmeia on the customer’s single meliponário; `code`/`startDate` only when the user provides them (else null); default status `desenvolvendo`.
+- `create-hive` inserts a colmeia on the lowest-id meliponário the user is a member of; `code`/`startDate` only when the user provides them (else null); default status `desenvolvendo`.
 - `update-hive` identifies by code and changes status only (appends history).
 - `hard-delete` removes the row after `confirmed=true` (frees the code).
 - `ownership` never mutates another customer’s hives.
@@ -20,7 +20,7 @@ Linked customers can list, create, update status, and hard-delete their own colm
 Preconditions:
 
 - Doctor PASS; Flyway tables exist.
-- Seed linked user, meliponário, and (for update/delete) at least one owned colmeia.
+- Seed linked user, a meliponário, and a `meliponario_membro` row for that user and yard. `owner_id` alone grants nothing. For update/delete, seed at least one colmeia in a yard the user is a member of. Create lands in the lowest-id yard that user belongs to.
 - Prefer an `OPENAI_BASE_URL` stub that returns `tool_calls` for `list_colmeias` / `create_colmeia` / `update_colmeia` / `delete_colmeia` then a final reply. Without a stub or real OpenAI, prove mutations with DB scripts mirroring the use cases and still capture SQL before/after; do not treat agent fallback as CRUD proof.
 
 - **List.** `post-webhook.sh --from '+15550005678' --body 'liste minhas colmeias' --out .cursor/skills/verify-bombus/artifacts/webhook-linked-colmeia-crud/list-response.xml --headers .cursor/skills/verify-bombus/artifacts/webhook-linked-colmeia-crud/list-headers.txt`. Observable: HTTP 200; reply reflects tool list payload (or DB-side list proof if stubbed offline).

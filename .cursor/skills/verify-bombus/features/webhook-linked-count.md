@@ -22,14 +22,16 @@ Preconditions:
 - Seed user and at least one countable colmeia owned by that user (species/status via reference data). Example sketch (IDs depend on migrations):
 
 ```bash
-# After boot: create verify user + whatsapp + meliponario + colmeia rows owned by that user.
+# After boot: create verify user + whatsapp + meliponario + colmeia rows.
+# Access is a row in meliponario_membro. owner_id alone grants nothing.
+# INSERT INTO meliponario_membro (usuario_id, meliponario_id) VALUES (<user_id>, <meliponario_id>);
 # Use reference especie/status ids from the DB; exclude or include status per domain rules.
 ```
 
 - Env from `meta.env` exported; if using a stub, relaunch with `OPENAI_BASE_URL` set before proving.
 
 - **Ask for a count.** Run `.cursor/skills/verify-bombus/scripts/post-webhook.sh --from '+15550005678' --body 'quantas colmeias eu tenho?' --out .cursor/skills/verify-bombus/artifacts/webhook-linked-count/response.xml --headers .cursor/skills/verify-bombus/artifacts/webhook-linked-count/headers.txt`. Observable: HTTP `200`; TwiML `<Message>` contains the numeric total that matches the tool/DB count (not the fallback apology).
-- **Cross-check DB.** Count that owner’s colmeias under the same filters the product uses; the number in the reply must match.
+- **Cross-check DB.** Count colmeias in meliponários where that user has a `meliponario_membro` row, under the same filters the product uses. The number in the reply must match. `owner_id` alone does not include a yard.
 - **Proof.** Save XML, headers, and the SQL count used for cross-check under `artifacts/webhook-linked-count/`.
 
 ## Gotchas

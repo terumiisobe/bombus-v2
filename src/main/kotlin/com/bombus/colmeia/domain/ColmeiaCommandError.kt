@@ -6,7 +6,6 @@ package com.bombus.colmeia.domain
  */
 sealed class ColmeiaCommandError(message: String) : Exception(message) {
     class NoMeliponario : ColmeiaCommandError("Customer has no meliponário")
-    class MeliponarioNotOwned : ColmeiaCommandError("Meliponário not owned by customer")
     class ColmeiaNotFound : ColmeiaCommandError("Colmeia not found for this customer")
     class AmbiguousCode : ColmeiaCommandError("Code matches multiple colmeias")
     class CodeTaken : ColmeiaCommandError("Code already in use in this meliponário")
