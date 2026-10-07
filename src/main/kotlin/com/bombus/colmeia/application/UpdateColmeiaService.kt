@@ -15,16 +15,27 @@ class UpdateColmeiaService(
     private val ownedColmeiaPort: OwnedColmeiaPort,
     private val vocabularyPort: ColmeiaVocabularyPort,
     private val properties: ColmeiaCountProperties,
+    private val codeAvailability: ColmeiaCodeAvailability,
     private val clock: Clock,
 ) : UpdateColmeiaUseCase {
 
     @Transactional
     override fun update(command: UpdateColmeiaCommand): ColmeiaSummary {
         val existing = resolveByCode(command.userId, command.code)
-        if (vocabularyPort.listStatuses().none { it.id == command.statusId }) {
-            throw ColmeiaCommandError.UnknownStatus()
-        }
+        val statusRef = vocabularyPort.listStatuses().find { it.id == command.statusId }
+            ?: throw ColmeiaCommandError.UnknownStatus()
         if (command.statusId == existing.statusId) return existing
+
+        // Becoming (or staying) active: code must not be held by another active hive.
+        // Codes only on perdida/vendida do not block (soft uniqueness).
+        if (!properties.releasesCode(statusRef.name)) {
+            codeAvailability.assertAvailable(
+                meliponarioId = existing.meliponarioId,
+                code = existing.code,
+                exceptColmeiaId = existing.id,
+            )
+        }
+
         return ownedColmeiaPort.appendStatus(existing.id, command.statusId, clock.instant())
             ?: throw ColmeiaCommandError.ColmeiaNotFound()
     }

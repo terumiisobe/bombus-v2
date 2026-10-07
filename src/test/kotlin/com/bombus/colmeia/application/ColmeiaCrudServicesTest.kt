@@ -29,7 +29,7 @@ class ColmeiaCrudServicesTest {
     @Test
     fun `create defaults status to desenvolvendo and leaves code startDate null`() {
         val port = FakeOwnedPort().apply { meliponarioIds = listOf(10L) }
-        val service = CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup, properties)
+        val service = createService(port)
 
         val created = service.create(CreateColmeiaCommand(userId = 1L, speciesId = 1L))
 
@@ -41,16 +41,29 @@ class ColmeiaCrudServicesTest {
     }
 
     @Test
-    fun `create rejects taken user code`() {
+    fun `create rejects code held by another active hive`() {
         val port = FakeOwnedPort().apply {
             meliponarioIds = listOf(10L)
-            takenCodes += 5
+            activeCodes += 5
         }
-        val service = CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup, properties)
+        val service = createService(port)
 
         assertFailsWith<ColmeiaCommandError.CodeTaken> {
             service.create(CreateColmeiaCommand(userId = 1L, speciesId = 1L, code = 5))
         }
+    }
+
+    @Test
+    fun `create allows code held only by perdida or vendida`() {
+        val port = FakeOwnedPort().apply {
+            meliponarioIds = listOf(10L)
+            releasingCodes += 5
+        }
+        val service = createService(port)
+
+        val created = service.create(CreateColmeiaCommand(userId = 1L, speciesId = 1L, code = 5))
+
+        assertEquals(5, created.code)
     }
 
     @Test
@@ -85,7 +98,7 @@ class ColmeiaCrudServicesTest {
             byCode[7] = listOf(SAMPLE)
             byId[100L] = SAMPLE
         }
-        val service = UpdateColmeiaService(port, FakeVocabulary, properties, clock)
+        val service = updateService(port)
 
         val updated = service.update(
             UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
@@ -98,12 +111,13 @@ class ColmeiaCrudServicesTest {
     }
 
     @Test
-    fun `update to perdida keeps code on the row`() {
+    fun `update to perdida keeps code and skips uniqueness check`() {
         val port = FakeOwnedPort().apply {
             byCode[7] = listOf(SAMPLE)
             byId[100L] = SAMPLE
+            activeCodes += 7 // would conflict if checked; releasing target skips check
         }
-        val service = UpdateColmeiaService(port, FakeVocabulary, properties, clock)
+        val service = updateService(port)
 
         val updated = service.update(
             UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_PERDIDA),
@@ -119,13 +133,46 @@ class ColmeiaCrudServicesTest {
             byCode[7] = listOf(SAMPLE)
             byId[100L] = SAMPLE
         }
-        val service = UpdateColmeiaService(port, FakeVocabulary, properties, clock)
+        val service = updateService(port)
 
         val updated = service.update(
             UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_VENDIDA),
         )
 
         assertEquals(STATUS_VENDIDA, updated.statusId)
+        assertEquals(7, updated.code)
+    }
+
+    @Test
+    fun `revive from vendida rejects when code already reused by an active hive`() {
+        val sold = SAMPLE.copy(id = 100L, statusId = STATUS_VENDIDA, statusName = "vendida")
+        val port = FakeOwnedPort().apply {
+            byCode[7] = listOf(sold)
+            byId[100L] = sold
+            activeCodes += 7
+        }
+        val service = updateService(port)
+
+        assertFailsWith<ColmeiaCommandError.CodeTaken> {
+            service.update(UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL))
+        }
+    }
+
+    @Test
+    fun `revive from vendida allows code when only releasing hives hold it`() {
+        val sold = SAMPLE.copy(id = 100L, statusId = STATUS_VENDIDA, statusName = "vendida")
+        val port = FakeOwnedPort().apply {
+            byCode[7] = listOf(sold)
+            byId[100L] = sold
+            releasingCodes += 7
+        }
+        val service = updateService(port)
+
+        val updated = service.update(
+            UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
+        )
+
+        assertEquals(STATUS_ESTAVEL, updated.statusId)
         assertEquals(7, updated.code)
     }
 
@@ -138,7 +185,7 @@ class ColmeiaCrudServicesTest {
             byId[100L] = sold
             byId[101L] = active
         }
-        val service = UpdateColmeiaService(port, FakeVocabulary, properties, clock)
+        val service = updateService(port)
 
         val updated = service.update(
             UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
@@ -153,16 +200,28 @@ class ColmeiaCrudServicesTest {
         val port = FakeOwnedPort().apply {
             byCode[7] = listOf(SAMPLE, SAMPLE.copy(id = 101L, meliponarioId = 11L))
         }
-        val service = UpdateColmeiaService(port, FakeVocabulary, properties, clock)
+        val service = updateService(port)
 
         assertFailsWith<ColmeiaCommandError.AmbiguousCode> {
             service.update(UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL))
         }
     }
 
+    private fun codeAvailability(port: FakeOwnedPort) =
+        ColmeiaCodeAvailability(port, FakeStatusLookup, properties)
+
+    private fun createService(port: FakeOwnedPort) =
+        CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup, codeAvailability(port))
+
+    private fun updateService(port: FakeOwnedPort) =
+        UpdateColmeiaService(port, FakeVocabulary, properties, codeAvailability(port), clock)
+
     private class FakeOwnedPort : OwnedColmeiaPort {
         var meliponarioIds: List<Long> = emptyList()
-        var takenCodes: MutableSet<Int> = mutableSetOf()
+        /** Codes held by active (non-releasing) hives — always block soft uniqueness. */
+        var activeCodes: MutableSet<Int> = mutableSetOf()
+        /** Codes held only by releasing hives — ignored when soft uniqueness is applied. */
+        var releasingCodes: MutableSet<Int> = mutableSetOf()
         var lastExcludeStatusIds: Set<Long> = emptySet()
         val byId = mutableMapOf<Long, ColmeiaSummary>()
         val byCode = mutableMapOf<Int, List<ColmeiaSummary>>()
@@ -191,7 +250,11 @@ class ColmeiaCrudServicesTest {
             code: Int,
             exceptColmeiaId: Long?,
             ignoreStatusIds: Collection<Long>,
-        ): Boolean = code in takenCodes
+        ): Boolean {
+            if (code in activeCodes) return true
+            if (ignoreStatusIds.isEmpty() && code in releasingCodes) return true
+            return false
+        }
 
         override fun insert(
             code: Int?,
