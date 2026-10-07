@@ -14,18 +14,22 @@ import java.time.Clock
 class UpdateColmeiaService(
     private val ownedColmeiaPort: OwnedColmeiaPort,
     private val vocabularyPort: ColmeiaVocabularyPort,
+    private val properties: ColmeiaCountProperties,
     private val clock: Clock,
 ) : UpdateColmeiaUseCase {
 
     @Transactional
     override fun update(command: UpdateColmeiaCommand): ColmeiaSummary {
         val existing = resolveByCode(command.userId, command.code)
-        if (vocabularyPort.listStatuses().none { it.id == command.statusId }) {
-            throw ColmeiaCommandError.UnknownStatus()
-        }
+        val statusRef = vocabularyPort.listStatuses().find { it.id == command.statusId }
+            ?: throw ColmeiaCommandError.UnknownStatus()
         if (command.statusId == existing.statusId) return existing
-        return ownedColmeiaPort.appendStatus(existing.id, command.statusId, clock.instant())
+        val updated = ownedColmeiaPort.appendStatus(existing.id, command.statusId, clock.instant())
             ?: throw ColmeiaCommandError.ColmeiaNotFound()
+        if (properties.releasesCode(statusRef.name)) {
+            return ownedColmeiaPort.clearCode(updated.id) ?: updated
+        }
+        return updated
     }
 
     private fun resolveByCode(userId: Long, code: Int): ColmeiaSummary {

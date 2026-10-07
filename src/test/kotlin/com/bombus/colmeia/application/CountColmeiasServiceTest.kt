@@ -9,14 +9,15 @@ import com.bombus.colmeia.domain.SpeciesCount
 import com.bombus.colmeia.domain.StatusCount
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CountColmeiasServiceTest {
 
     private val perdidaId = 4L
+    private val vendidaId = 6L
 
     @Test
-    fun `plain count excludes the default status and keeps sem status`() {
+    fun `plain count excludes perdida and vendida and keeps sem status`() {
         val port = RecordingCountPort(result = 3)
         val service = service(port)
 
@@ -25,13 +26,17 @@ class CountColmeiasServiceTest {
         assertEquals(3, result.total)
         assertEquals(OWNER, port.lastUserId)
         assertEquals(
-            ColmeiaCountFilter(speciesId = null, includeStatusId = null, excludeStatusId = perdidaId),
+            ColmeiaCountFilter(
+                speciesId = null,
+                includeStatusId = null,
+                excludeStatusIds = setOf(perdidaId, vendidaId),
+            ),
             port.lastFilter,
         )
     }
 
     @Test
-    fun `species-only count still excludes the default status`() {
+    fun `species-only count still excludes the default statuses`() {
         val port = RecordingCountPort(result = 2)
         val service = service(port)
 
@@ -39,7 +44,11 @@ class CountColmeiasServiceTest {
 
         assertEquals(2, result.total)
         assertEquals(
-            ColmeiaCountFilter(speciesId = 1, includeStatusId = null, excludeStatusId = perdidaId),
+            ColmeiaCountFilter(
+                speciesId = 1,
+                includeStatusId = null,
+                excludeStatusIds = setOf(perdidaId, vendidaId),
+            ),
             port.lastFilter,
         )
     }
@@ -53,7 +62,7 @@ class CountColmeiasServiceTest {
 
         assertEquals(5, result.total)
         assertEquals(
-            ColmeiaCountFilter(speciesId = null, includeStatusId = 3, excludeStatusId = null),
+            ColmeiaCountFilter(speciesId = null, includeStatusId = 3, excludeStatusIds = emptySet()),
             port.lastFilter,
         )
     }
@@ -67,7 +76,19 @@ class CountColmeiasServiceTest {
 
         assertEquals(2, result.total)
         assertEquals(perdidaId, port.lastFilter?.includeStatusId)
-        assertNull(port.lastFilter?.excludeStatusId)
+        assertTrue(port.lastFilter?.excludeStatusIds?.isEmpty() == true)
+    }
+
+    @Test
+    fun `explicit vendida status is returnable`() {
+        val port = RecordingCountPort(result = 1)
+        val service = service(port)
+
+        val result = service.count(CountColmeiasQuery(userId = OWNER, statusId = vendidaId))
+
+        assertEquals(1, result.total)
+        assertEquals(vendidaId, port.lastFilter?.includeStatusId)
+        assertTrue(port.lastFilter?.excludeStatusIds?.isEmpty() == true)
     }
 
     @Test
@@ -78,7 +99,7 @@ class CountColmeiasServiceTest {
         service.count(CountColmeiasQuery(userId = OWNER, speciesId = 1, statusId = 3))
 
         assertEquals(
-            ColmeiaCountFilter(speciesId = 1, includeStatusId = 3, excludeStatusId = null),
+            ColmeiaCountFilter(speciesId = 1, includeStatusId = 3, excludeStatusIds = emptySet()),
             port.lastFilter,
         )
     }
@@ -94,13 +115,23 @@ class CountColmeiasServiceTest {
     }
 
     @Test
-    fun `no default exclusion is applied when the excluded status name is unknown`() {
+    fun `no default exclusion is applied when excluded status names are unknown`() {
         val port = RecordingCountPort(result = 7)
         val service = service(port, statuses = emptyMap())
 
         service.count(CountColmeiasQuery(userId = OWNER))
 
-        assertNull(port.lastFilter?.excludeStatusId)
+        assertTrue(port.lastFilter?.excludeStatusIds?.isEmpty() == true)
+    }
+
+    @Test
+    fun `partially resolved excluded names still exclude known ones`() {
+        val port = RecordingCountPort(result = 4)
+        val service = service(port, statuses = mapOf("perdida" to perdidaId))
+
+        service.count(CountColmeiasQuery(userId = OWNER))
+
+        assertEquals(setOf(perdidaId), port.lastFilter?.excludeStatusIds)
     }
 
     @Test
@@ -115,18 +146,19 @@ class CountColmeiasServiceTest {
         val result = service.count(CountColmeiasQuery(userId = OWNER, groupBy = setOf(CountDimension.SPECIES)))
 
         assertEquals(species, result.perSpecies)
-        assertNull(result.perStatus)
+        assertEquals(null, result.perStatus)
         assertEquals(5, result.total)
-        assertNull(port.lastFilter?.includeStatusId)
-        assertNull(port.lastFilter?.excludeStatusId)
+        assertEquals(null, port.lastFilter?.includeStatusId)
+        assertTrue(port.lastFilter?.excludeStatusIds?.isEmpty() == true)
     }
 
     @Test
-    fun `per-status breakdown includes perdida and the sem status group`() {
+    fun `per-status breakdown includes perdida vendida and the sem status group`() {
         val statuses = listOf(
-            StatusCount(statusId = 1, statusName = "em_desenvolvimento", count = 1),
+            StatusCount(statusId = 1, statusName = "desenvolvendo", count = 1),
             StatusCount(statusId = 3, statusName = "estavel", count = 1),
             StatusCount(statusId = perdidaId, statusName = "perdida", count = 2),
+            StatusCount(statusId = vendidaId, statusName = "vendida", count = 1),
             StatusCount(statusId = null, statusName = null, count = 1),
         )
         val port = RecordingCountPort(perStatus = statuses)
@@ -135,9 +167,9 @@ class CountColmeiasServiceTest {
         val result = service.count(CountColmeiasQuery(userId = OWNER, groupBy = setOf(CountDimension.STATUS)))
 
         assertEquals(statuses, result.perStatus)
-        assertNull(result.perSpecies)
-        assertEquals(5, result.total)
-        assertNull(port.lastFilter?.excludeStatusId)
+        assertEquals(null, result.perSpecies)
+        assertEquals(6, result.total)
+        assertTrue(port.lastFilter?.excludeStatusIds?.isEmpty() == true)
     }
 
     @Test
@@ -166,18 +198,18 @@ class CountColmeiasServiceTest {
         )
 
         assertEquals(
-            ColmeiaCountFilter(speciesId = 1, includeStatusId = null, excludeStatusId = null),
+            ColmeiaCountFilter(speciesId = 1, includeStatusId = null, excludeStatusIds = emptySet()),
             port.lastFilter,
         )
     }
 
     private fun service(
         port: ColmeiaCountPort,
-        statuses: Map<String, Long> = mapOf("perdida" to perdidaId),
+        statuses: Map<String, Long> = mapOf("perdida" to perdidaId, "vendida" to vendidaId),
     ) = CountColmeiasService(
         countPort = port,
         statusLookupPort = FakeStatusLookupPort(statuses),
-        properties = ColmeiaCountProperties(defaultExcludedStatus = "perdida"),
+        properties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida")),
     )
 
     private class RecordingCountPort(

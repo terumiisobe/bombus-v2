@@ -10,7 +10,7 @@ interface CreateColmeiaUseCase {
 /**
  * Field contract (create):
  * - speciesId: user (required)
- * - statusId: user optional; default "em_desenvolvimento"
+ * - statusId: user optional; default "desenvolvendo"
  * - code: user optional; otherwise null (no auto-assign)
  * - startDate: user optional; otherwise null
  * - meliponarioId: derived (one meliponário per user)

@@ -24,12 +24,12 @@ class ListOwnedColmeiasService(
         if (query.offset < 0) {
             throw ColmeiaCommandError.InvalidLimit()
         }
-        val excludeStatusId =
-            if (query.includeLost) null
-            else statusLookupPort.findIdByName(properties.defaultExcludedStatus)
+        val excludeStatusIds =
+            if (query.includeLost) emptySet()
+            else properties.defaultExcludedStatuses.mapNotNull { statusLookupPort.findIdByName(it) }.toSet()
         return ownedColmeiaPort.listByOwner(
             userId = query.userId,
-            excludeStatusId = excludeStatusId,
+            excludeStatusIds = excludeStatusIds,
             limit = query.limit,
             offset = query.offset,
         )

@@ -13,7 +13,7 @@ interface OwnedColmeiaPort {
 
     fun listByOwner(
         userId: Long,
-        excludeStatusId: Long?,
+        excludeStatusIds: Collection<Long>,
         limit: Int,
         offset: Int,
     ): List<ColmeiaSummary>
@@ -23,10 +23,15 @@ interface OwnedColmeiaPort {
         code: Int,
     ): List<ColmeiaSummary>
 
+    /**
+     * Whether [code] is held by another hive in [meliponarioId].
+     * Hives whose current status is in [ignoreStatusIds] do not block reuse (code-releasing statuses).
+     */
     fun isCodeTaken(
         meliponarioId: Long,
         code: Int,
         exceptColmeiaId: Long? = null,
+        ignoreStatusIds: Collection<Long> = emptyList(),
     ): Boolean
 
     fun insert(
@@ -38,6 +43,9 @@ interface OwnedColmeiaPort {
     ): ColmeiaSummary
 
     fun appendStatus(colmeiaId: Long, statusId: Long, recordedAt: Instant): ColmeiaSummary?
+
+    /** Nullifies [colmeiaId]'s code so another hive can reuse it. Returns the updated summary. */
+    fun clearCode(colmeiaId: Long): ColmeiaSummary?
 
     fun deleteByIdForOwner(userId: Long, colmeiaId: Long): Boolean
 }

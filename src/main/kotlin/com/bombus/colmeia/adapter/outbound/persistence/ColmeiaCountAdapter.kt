@@ -28,11 +28,11 @@ class ColmeiaCountAdapter(
             .addValue("userId", userId)
             .addValue("speciesId", filter.speciesId)
             .addValue("includeStatusId", filter.includeStatusId)
-            .addValue("excludeStatusId", filter.excludeStatusId)
+            .addValue("hasExclude", filter.excludeStatusIds.isNotEmpty())
+            .addValue("excludeStatusIds", filter.excludeStatusIds.ifEmpty { setOf(-1L) })
 
     private companion object {
-        // IS DISTINCT FROM (not <>) is required so excludeStatusId drops only that status
-        // while keeping "sem status" (NULL current status) colmeias.
+        // Keep "sem status" (NULL) when excluding; NOT IN alone would drop NULL rows.
         private const val LATEST_STATUS_AND_FILTERS = """
             JOIN meliponario m ON m.id = c.meliponario_id
             LEFT JOIN LATERAL (
@@ -45,7 +45,11 @@ class ColmeiaCountAdapter(
             WHERE m.owner_id = :userId
               AND (CAST(:speciesId AS BIGINT) IS NULL OR c.species_id = CAST(:speciesId AS BIGINT))
               AND (CAST(:includeStatusId AS BIGINT) IS NULL OR cur.status_id = CAST(:includeStatusId AS BIGINT))
-              AND (CAST(:excludeStatusId AS BIGINT) IS NULL OR cur.status_id IS DISTINCT FROM CAST(:excludeStatusId AS BIGINT))
+              AND (
+                CAST(:hasExclude AS BOOLEAN) = FALSE
+                OR cur.status_id IS NULL
+                OR cur.status_id NOT IN (:excludeStatusIds)
+              )
         """
 
         val COUNT_SQL = """

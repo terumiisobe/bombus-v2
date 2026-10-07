@@ -15,6 +15,7 @@ class CreateColmeiaService(
     private val ownedColmeiaPort: OwnedColmeiaPort,
     private val vocabularyPort: ColmeiaVocabularyPort,
     private val statusLookupPort: StatusColmeiaLookupPort,
+    private val properties: ColmeiaCountProperties,
 ) : CreateColmeiaUseCase {
 
     @Transactional
@@ -22,10 +23,14 @@ class CreateColmeiaService(
         val meliponarioId = resolveMeliponario(command.userId)
         requireKnownSpecies(command.speciesId)
 
+        val releasingIds = properties.defaultExcludedStatuses
+            .mapNotNull { statusLookupPort.findIdByName(it) }
+            .toSet()
+
         val code = command.code
         if (code != null) {
             if (code < 1) throw ColmeiaCommandError.CodeTaken()
-            if (ownedColmeiaPort.isCodeTaken(meliponarioId, code)) {
+            if (ownedColmeiaPort.isCodeTaken(meliponarioId, code, ignoreStatusIds = releasingIds)) {
                 throw ColmeiaCommandError.CodeTaken()
             }
         }
@@ -35,13 +40,19 @@ class CreateColmeiaService(
             ?: throw ColmeiaCommandError.UnknownStatus()
         requireKnownStatus(statusId)
 
-        return ownedColmeiaPort.insert(
+        val created = ownedColmeiaPort.insert(
             code = code,
             speciesId = command.speciesId,
             meliponarioId = meliponarioId,
             startDate = command.startDate,
             initialStatusId = statusId,
         )
+
+        val statusName = vocabularyPort.listStatuses().find { it.id == statusId }?.name
+        if (statusName != null && properties.releasesCode(statusName)) {
+            return ownedColmeiaPort.clearCode(created.id) ?: created
+        }
+        return created
     }
 
     private fun resolveMeliponario(userId: Long): Long {
@@ -63,6 +74,6 @@ class CreateColmeiaService(
     }
 
     companion object {
-        const val DEFAULT_CREATE_STATUS = "em_desenvolvimento"
+        const val DEFAULT_CREATE_STATUS = "desenvolvendo"
     }
 }

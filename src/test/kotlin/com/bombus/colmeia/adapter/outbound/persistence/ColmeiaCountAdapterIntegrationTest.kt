@@ -15,7 +15,7 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 
-// Seeded statuses come from migrations: 1=em_desenvolvimento, 2=recuperando, 3=estavel, 4=perdida, 5=desconhecido.
+// Seeded statuses: 1=desenvolvendo, 2=recuperando, 3=estavel, 4=perdida, 5=desconhecido, 6=vendida.
 @Testcontainers
 @Transactional
 @SpringBootTest(
@@ -40,6 +40,7 @@ class ColmeiaCountAdapterIntegrationTest {
     private lateinit var jdbcTemplate: JdbcTemplate
 
     private val perdidaId: Long get() = statusLookupAdapter.findIdByName("perdida")!!
+    private val vendidaId: Long get() = statusLookupAdapter.findIdByName("vendida")!!
 
     @BeforeEach
     fun seed() {
@@ -73,20 +74,30 @@ class ColmeiaCountAdapterIntegrationTest {
         // c6: species 1, OTHER owner — must never be counted for OWNER.
         insertColmeia(id = 6, speciesId = 1, meliponarioId = MEL_OTHER)
         insertStatus(colmeiaId = 6, statusId = STATUS_ESTAVEL, at = "2024-01-01T10:00:00Z")
+
+        // c7: species 2, mel B — current vendida (also default-excluded).
+        insertColmeia(id = 7, speciesId = 2, meliponarioId = MEL_B)
+        insertStatus(colmeiaId = 7, statusId = STATUS_VENDIDA, at = "2024-01-01T10:00:00Z")
     }
 
     @Test
-    fun `plain count excludes perdida but keeps sem status, summing across meliponarios`() {
-        // Living across both meliponarios: c1 (estavel), c3 (sem status), c4 (desenvolvendo) = 3.
-        val count = adapter.countByOwner(OWNER, ColmeiaCountFilter(excludeStatusId = perdidaId))
+    fun `plain count excludes perdida and vendida but keeps sem status, summing across meliponarios`() {
+        // Living: c1 (estavel), c3 (sem status), c4 (desenvolvendo) = 3. c2/c5 perdida, c7 vendida excluded.
+        val count = adapter.countByOwner(
+            OWNER,
+            ColmeiaCountFilter(excludeStatusIds = setOf(perdidaId, vendidaId)),
+        )
 
         assertThat(count).isEqualTo(3)
     }
 
     @Test
-    fun `species-only count excludes perdida and keeps sem status of that species`() {
+    fun `species-only count excludes perdida and vendida and keeps sem status of that species`() {
         // Species 1 living: c1 (estavel), c3 (sem status); c2 (perdida) excluded = 2.
-        val count = adapter.countByOwner(OWNER, ColmeiaCountFilter(speciesId = 1, excludeStatusId = perdidaId))
+        val count = adapter.countByOwner(
+            OWNER,
+            ColmeiaCountFilter(speciesId = 1, excludeStatusIds = setOf(perdidaId, vendidaId)),
+        )
 
         assertThat(count).isEqualTo(2)
     }
@@ -97,6 +108,13 @@ class ColmeiaCountAdapterIntegrationTest {
         val count = adapter.countByOwner(OWNER, ColmeiaCountFilter(includeStatusId = perdidaId))
 
         assertThat(count).isEqualTo(2)
+    }
+
+    @Test
+    fun `explicit vendida status is returnable when the exclusion is not applied`() {
+        val count = adapter.countByOwner(OWNER, ColmeiaCountFilter(includeStatusId = vendidaId))
+
+        assertThat(count).isEqualTo(1)
     }
 
     @Test
@@ -115,20 +133,20 @@ class ColmeiaCountAdapterIntegrationTest {
     }
 
     @Test
-    fun `per-species breakdown counts every species without excluding perdida`() {
-        // species 1: c1, c2, c3 = 3; species 2: c4, c5 = 2. c6 belongs to OTHER and is excluded.
+    fun `per-species breakdown counts every species without excluding perdida or vendida`() {
+        // species 1: c1, c2, c3 = 3; species 2: c4, c5, c7 = 3. c6 belongs to OTHER and is excluded.
         val perSpecies = adapter.breakdownBySpecies(OWNER, ColmeiaCountFilter())
 
         assertThat(perSpecies).extracting("speciesId", "count")
             .containsExactly(
                 tuple(1L, 3L),
-                tuple(2L, 2L),
+                tuple(2L, 3L),
             )
     }
 
     @Test
-    fun `per-status breakdown includes perdida and a sem-status (null) group`() {
-        // desenvolvendo: c4 = 1; estavel: c1 = 1; perdida: c2, c5 = 2; sem status: c3 = 1.
+    fun `per-status breakdown includes perdida vendida and a sem-status (null) group`() {
+        // desenvolvendo: c4 = 1; estavel: c1 = 1; perdida: c2, c5 = 2; vendida: c7 = 1; sem status: c3 = 1.
         val perStatus = adapter.breakdownByStatus(OWNER, ColmeiaCountFilter())
 
         assertThat(perStatus).extracting("statusId", "count")
@@ -136,9 +154,10 @@ class ColmeiaCountAdapterIntegrationTest {
                 tuple(STATUS_DESENVOLVENDO, 1L),
                 tuple(STATUS_ESTAVEL, 1L),
                 tuple(STATUS_PERDIDA, 2L),
+                tuple(STATUS_VENDIDA, 1L),
                 tuple(null, 1L),
             )
-        assertThat(perStatus.sumOf { it.count }).isEqualTo(5)
+        assertThat(perStatus.sumOf { it.count }).isEqualTo(6)
     }
 
     private fun insertColmeia(id: Long, speciesId: Long, meliponarioId: Long) {
@@ -165,6 +184,7 @@ class ColmeiaCountAdapterIntegrationTest {
         private const val STATUS_DESENVOLVENDO = 1L
         private const val STATUS_ESTAVEL = 3L
         private const val STATUS_PERDIDA = 4L
+        private const val STATUS_VENDIDA = 6L
 
         @Container
         @ServiceConnection

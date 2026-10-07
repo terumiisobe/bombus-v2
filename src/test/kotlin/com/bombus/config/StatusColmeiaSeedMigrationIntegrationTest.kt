@@ -28,18 +28,19 @@ class StatusColmeiaSeedMigrationIntegrationTest {
     private lateinit var jdbcTemplate: JdbcTemplate
 
     @Test
-    fun `the five canonical statuses are seeded`() {
+    fun `the six canonical statuses are seeded`() {
         val names = jdbcTemplate.queryForList(
             "SELECT name FROM status_colmeia ORDER BY id",
             String::class.java,
         )
 
         assertThat(names).containsExactly(
-            "em_desenvolvimento",
+            "desenvolvendo",
             "recuperando",
             "estavel",
             "perdida",
             "desconhecido",
+            "vendida",
         )
     }
 
@@ -53,7 +54,7 @@ class StatusColmeiaSeedMigrationIntegrationTest {
             "novo",
         )
 
-        assertThat(generatedId).isGreaterThan(5L)
+        assertThat(generatedId).isGreaterThan(6L)
     }
 
     companion object {
