@@ -14,8 +14,8 @@ import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
-import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
-import com.bombus.colmeia.application.port.inbound.UpdateColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
 import com.bombus.colmeia.domain.ColmeiaCommandError
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.ColmeiaVocabulary
@@ -37,7 +37,7 @@ class ChatToolExecutor(
     private val vocabularyUseCase: ListColmeiaVocabularyUseCase,
     private val listOwnedColmeias: ListOwnedColmeiasUseCase,
     private val createColmeia: CreateColmeiaUseCase,
-    private val updateColmeia: UpdateColmeiaUseCase,
+    private val recordColmeiaStatus: RecordColmeiaStatusUseCase,
     private val deleteColmeia: DeleteColmeiaUseCase,
     private val objectMapper: ObjectMapper,
     private val countProperties: ColmeiaCountProperties,
@@ -245,8 +245,8 @@ class ChatToolExecutor(
                     "Unknown status '$statusRaw'. Valid names: ${resolved.validNames.joinToString()}",
                 )
         }
-        val updated = updateColmeia.update(
-            UpdateColmeiaCommand(
+        val updated = recordColmeiaStatus.record(
+            RecordColmeiaStatusCommand(
                 userId = userId,
                 code = code,
                 statusId = status.id,
