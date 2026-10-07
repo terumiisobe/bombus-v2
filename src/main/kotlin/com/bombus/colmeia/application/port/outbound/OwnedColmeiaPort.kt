@@ -25,7 +25,8 @@ interface OwnedColmeiaPort {
 
     /**
      * Whether [code] is held by another hive in [meliponarioId].
-     * Hives whose current status is in [ignoreStatusIds] do not block reuse (code-releasing statuses).
+     * Hives whose current status is in [ignoreStatusIds] do not block reuse
+     * (code-releasing statuses keep their code on the row).
      */
     fun isCodeTaken(
         meliponarioId: Long,
@@ -43,9 +44,6 @@ interface OwnedColmeiaPort {
     ): ColmeiaSummary
 
     fun appendStatus(colmeiaId: Long, statusId: Long, recordedAt: Instant): ColmeiaSummary?
-
-    /** Nullifies [colmeiaId]'s code so another hive can reuse it. Returns the updated summary. */
-    fun clearCode(colmeiaId: Long): ColmeiaSummary?
 
     fun deleteByIdForOwner(userId: Long, colmeiaId: Long): Boolean
 }

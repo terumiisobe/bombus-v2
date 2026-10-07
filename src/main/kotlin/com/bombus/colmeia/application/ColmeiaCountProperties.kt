@@ -6,11 +6,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class ColmeiaCountProperties(
     /**
      * Status names excluded from plain/species counts and from default list views.
-     * The same set also releases a hive's `code` for reuse (soft uniqueness / nullify).
+     * The same set releases a hive's `code` for reuse via soft uniqueness (the code
+     * stays on the row; [isCodeTaken] ignores these statuses).
      */
     val defaultExcludedStatuses: List<String> = listOf("perdida", "vendida"),
 ) {
     fun excludedStatusLabel(): String = defaultExcludedStatuses.joinToString(", ")
 
-    fun releasesCode(statusName: String): Boolean = statusName in defaultExcludedStatuses
+    fun releasesCode(statusName: String?): Boolean =
+        statusName != null && statusName in defaultExcludedStatuses
 }

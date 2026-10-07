@@ -20,7 +20,7 @@ twilio:
 
 colmeia:
   # Statuses excluded by default from a plain/species count and default list (resolved at runtime).
-  # The same set releases hive codes for reuse when a hive enters one of these statuses.
+  # The same set releases hive codes for reuse via soft uniqueness (codes stay on the row).
   default-excluded-statuses:
     - perdida
     - vendida

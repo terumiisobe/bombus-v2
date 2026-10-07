@@ -40,19 +40,13 @@ class CreateColmeiaService(
             ?: throw ColmeiaCommandError.UnknownStatus()
         requireKnownStatus(statusId)
 
-        val created = ownedColmeiaPort.insert(
+        return ownedColmeiaPort.insert(
             code = code,
             speciesId = command.speciesId,
             meliponarioId = meliponarioId,
             startDate = command.startDate,
             initialStatusId = statusId,
         )
-
-        val statusName = vocabularyPort.listStatuses().find { it.id == statusId }?.name
-        if (statusName != null && properties.releasesCode(statusName)) {
-            return ownedColmeiaPort.clearCode(created.id) ?: created
-        }
-        return created
     }
 
     private fun resolveMeliponario(userId: Long): Long {

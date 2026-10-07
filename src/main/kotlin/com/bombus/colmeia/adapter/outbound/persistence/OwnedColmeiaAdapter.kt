@@ -117,15 +117,6 @@ class OwnedColmeiaAdapter(
         return findByIdUnchecked(colmeiaId)
     }
 
-    override fun clearCode(colmeiaId: Long): ColmeiaSummary? {
-        val updated = jdbc.update(
-            "UPDATE colmeia SET code = NULL WHERE id = :id",
-            MapSqlParameterSource("id", colmeiaId),
-        )
-        if (updated == 0) return null
-        return findByIdUnchecked(colmeiaId)
-    }
-
     override fun deleteByIdForOwner(userId: Long, colmeiaId: Long): Boolean {
         val updated = jdbc.update(
             """

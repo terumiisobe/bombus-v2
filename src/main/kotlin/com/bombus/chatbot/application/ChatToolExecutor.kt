@@ -462,7 +462,7 @@ class ChatToolExecutor(
             name = ChatToolNames.UPDATE_COLMEIA,
             description =
                 "Update an owned hive status. Identify by code. Only status (name) is mutable (appends history). " +
-                    "Marking perdida or vendida frees the hive code for reuse. " +
+                    "Marking perdida or vendida frees the code for reuse on a new hive (code stays on the old row). " +
                     "Species, meliponário, and startDate stay fixed. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",

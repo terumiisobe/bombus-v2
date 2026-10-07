@@ -77,7 +77,7 @@ class OwnedColmeiaAdapterIntegrationTest {
     }
 
     @Test
-    fun `perdida status clears code and soft-uniqueness frees it for reuse`() {
+    fun `perdida keeps code but soft-uniqueness frees it for reuse`() {
         val first = adapter.insert(
             code = 9,
             speciesId = 1,
@@ -87,18 +87,18 @@ class OwnedColmeiaAdapterIntegrationTest {
         )
         assertThat(adapter.isCodeTaken(MEL, 9)).isTrue()
 
-        adapter.appendStatus(first.id, perdidaId, Instant.parse("2026-02-01T00:00:00Z"))
-        val cleared = adapter.clearCode(first.id)!!
-        assertThat(cleared.code).isNull()
+        val lost = adapter.appendStatus(first.id, perdidaId, Instant.parse("2026-02-01T00:00:00Z"))!!
+        assertThat(lost.code).isEqualTo(9)
         assertThat(adapter.isCodeTaken(MEL, 9, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
         val reused = adapter.insert(9, 2, MEL, null, estavelId)
         assertThat(reused.code).isEqualTo(9)
         assertThat(reused.id).isNotEqualTo(first.id)
+        assertThat(adapter.findByCodeForOwner(OWNER, 9)).hasSize(2)
     }
 
     @Test
-    fun `vendida status clears code and soft-uniqueness frees it for reuse`() {
+    fun `vendida keeps code but soft-uniqueness frees it for reuse`() {
         val first = adapter.insert(
             code = 8,
             speciesId = 1,
@@ -106,12 +106,14 @@ class OwnedColmeiaAdapterIntegrationTest {
             startDate = Instant.parse("2026-01-01T00:00:00Z"),
             initialStatusId = desenvolvendoId,
         )
-        adapter.appendStatus(first.id, vendidaId, Instant.parse("2026-02-01T00:00:00Z"))
-        assertThat(adapter.clearCode(first.id)!!.code).isNull()
+        val sold = adapter.appendStatus(first.id, vendidaId, Instant.parse("2026-02-01T00:00:00Z"))!!
+        assertThat(sold.code).isEqualTo(8)
         assertThat(adapter.isCodeTaken(MEL, 8, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
         val reused = adapter.insert(8, 2, MEL, null, estavelId)
         assertThat(reused.code).isEqualTo(8)
+        assertThat(adapter.findByCodeForOwner(OWNER, 8)).extracting("id")
+            .containsExactlyInAnyOrder(first.id, reused.id)
     }
 
     @Test

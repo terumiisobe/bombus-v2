@@ -71,7 +71,7 @@ class ColmeiaCrudServicesTest {
             byCode[7] = listOf(SAMPLE)
             byId[100L] = SAMPLE
         }
-        val service = DeleteColmeiaService(port)
+        val service = DeleteColmeiaService(port, properties)
 
         val deleted = service.delete(DeleteColmeiaCommand(userId = 1L, code = 7))
         assertEquals(7, deleted.code)
@@ -94,11 +94,11 @@ class ColmeiaCrudServicesTest {
         assertEquals(1L, updated.speciesId)
         assertEquals(STATUS_ESTAVEL, updated.statusId)
         assertEquals(1, port.appendedStatuses.size)
-        assertTrue(port.clearedCodes.isEmpty())
+        assertEquals(7, updated.code)
     }
 
     @Test
-    fun `update to perdida clears code for reuse`() {
+    fun `update to perdida keeps code on the row`() {
         val port = FakeOwnedPort().apply {
             byCode[7] = listOf(SAMPLE)
             byId[100L] = SAMPLE
@@ -110,12 +110,11 @@ class ColmeiaCrudServicesTest {
         )
 
         assertEquals(STATUS_PERDIDA, updated.statusId)
-        assertNull(updated.code)
-        assertTrue(port.clearedCodes.contains(100L))
+        assertEquals(7, updated.code)
     }
 
     @Test
-    fun `update to vendida clears code for reuse`() {
+    fun `update to vendida keeps code on the row`() {
         val port = FakeOwnedPort().apply {
             byCode[7] = listOf(SAMPLE)
             byId[100L] = SAMPLE
@@ -127,12 +126,30 @@ class ColmeiaCrudServicesTest {
         )
 
         assertEquals(STATUS_VENDIDA, updated.statusId)
-        assertNull(updated.code)
-        assertTrue(port.clearedCodes.contains(100L))
+        assertEquals(7, updated.code)
     }
 
     @Test
-    fun `update by ambiguous code fails`() {
+    fun `update prefers active hive when code was reused after vendida`() {
+        val sold = SAMPLE.copy(id = 100L, statusId = STATUS_VENDIDA, statusName = "vendida")
+        val active = SAMPLE.copy(id = 101L, statusId = STATUS_DESENVOLVENDO, statusName = "desenvolvendo")
+        val port = FakeOwnedPort().apply {
+            byCode[7] = listOf(sold, active)
+            byId[100L] = sold
+            byId[101L] = active
+        }
+        val service = UpdateColmeiaService(port, FakeVocabulary, properties, clock)
+
+        val updated = service.update(
+            UpdateColmeiaCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
+        )
+
+        assertEquals(101L, updated.id)
+        assertEquals(STATUS_ESTAVEL, updated.statusId)
+    }
+
+    @Test
+    fun `update by ambiguous active codes fails`() {
         val port = FakeOwnedPort().apply {
             byCode[7] = listOf(SAMPLE, SAMPLE.copy(id = 101L, meliponarioId = 11L))
         }
@@ -151,7 +168,6 @@ class ColmeiaCrudServicesTest {
         val byCode = mutableMapOf<Int, List<ColmeiaSummary>>()
         val inserts = mutableListOf<ColmeiaSummary>()
         val appendedStatuses = mutableListOf<Pair<Long, Long>>()
-        val clearedCodes = mutableListOf<Long>()
         val deletedIds = mutableListOf<Long>()
         private var seq = 200L
 
@@ -213,14 +229,6 @@ class ColmeiaCrudServicesTest {
                     else -> "other"
                 },
             )
-            byId[colmeiaId] = next
-            return next
-        }
-
-        override fun clearCode(colmeiaId: Long): ColmeiaSummary? {
-            val current = byId[colmeiaId] ?: return null
-            clearedCodes += colmeiaId
-            val next = current.copy(code = null)
             byId[colmeiaId] = next
             return next
         }
