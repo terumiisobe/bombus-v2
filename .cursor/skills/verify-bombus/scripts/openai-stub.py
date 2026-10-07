@@ -45,16 +45,22 @@ def completion(body):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("list_colmeias", {"limit": 20})]}
     elif any(k in text for k in ("criar", "nova colmeia", "cadastrar")):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("create_colmeia", {"species": "Jataí"})]}
-    elif any(k in text for k in ("atualizar", "mudar status")):
+    elif any(k in text for k in ("vendida", "vendeu", "vendi", "foi vendida")):
+        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "status": "vendida"})]}
+    elif any(k in text for k in ("perdida", "perdi", "perdeu", "foi perdida")):
+        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "status": "perdida"})]}
+    elif any(k in text for k in ("atualizar", "mudar status", "visita", "acompanhamento")):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "status": "desenvolvendo"})]}
-    elif any(k in text for k in ("confirmo", "pode excluir", "pode apagar", "sim, exclua")):
+    elif any(k in text for k in ("confirmo exclusao", "confirmo exclusão", "pode excluir", "pode apagar", "sim, exclua", "erro de cadastro, confirma")):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("delete_colmeia", {"code": 1, "confirmed": True})]}
+    elif any(k in text for k in ("erro de cadastro", "cadastro errado", "nunca existiu", "entrada errada")):
+        message = {"role": "assistant", "content": "Isso apaga o cadastro de forma definitiva. Confirma que posso excluir a colmeia código 1 por erro de cadastro?"}
     elif any(k in text for k in ("excluir", "remover", "apagar", "deletar")):
-        message = {"role": "assistant", "content": "Essa exclusão é definitiva e irreversível. Confirma que posso apagar a colmeia código 1?"}
+        message = {"role": "assistant", "content": "Para saída real do plantel, prefiro marcar como perdida ou vendida (a colmeia fica no histórico). Só uso exclusão definitiva se for erro de cadastro — era isso?"}
     elif any(k in text for k in ("quantas", "contar")):
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("count_colmeias", {"species": None, "status": None, "groupBy": []})]}
     else:
-        message = {"role": "assistant", "content": "Posso contar, listar, criar, atualizar ou excluir colmeias."}
+        message = {"role": "assistant", "content": "Posso contar, listar, cadastrar, registrar visita de status, marcar perdida/vendida ou excluir só por erro de cadastro."}
     return {"id": "chatcmpl-verify", "object": "chat.completion", "choices": [{"index": 0, "message": message, "finish_reason": "stop"}]}
 
 class Handler(BaseHTTPRequestHandler):

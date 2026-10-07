@@ -98,8 +98,12 @@ class OpenAiConversationAdapterTest {
             .contains("acompanhamento/visita")
             .contains("erro de cadastro")
             .contains("perdida ou vendida")
+            .contains("soft disposition")
+            .contains("mesma lista de config")
+            .contains("marcar perdida/vendida")
             .contains("note opcional")
             .doesNotContain("visitedAt")
+            .doesNotContain("source")
     }
 
     @Test
