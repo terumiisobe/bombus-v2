@@ -461,7 +461,8 @@ class ChatToolExecutor(
         val UPDATE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.UPDATE_COLMEIA,
             description =
-                "Update an owned hive status. Identify by code. Only status (name) is mutable (appends history). " +
+                "Update an owned active hive status. Identify by code (exactly one active hive; " +
+                    "perdida/vendida with that code are ignored). Only status (name) is mutable (appends history). " +
                     "Marking perdida or vendida frees the code for reuse on a new hive (code stays on the old row). " +
                     "Species, meliponário, and startDate stay fixed. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
@@ -478,7 +479,8 @@ class ChatToolExecutor(
         val DELETE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.DELETE_COLMEIA,
             description =
-                "Permanently delete an owned hive by code (hard delete, irreversible). " +
+                "Permanently delete an owned active hive by code (hard delete, irreversible). " +
+                    "Exactly one active hive for that code; perdida/vendida with the same code are ignored. " +
                     "Only call after the user explicitly confirmed. Pass confirmed=true.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
