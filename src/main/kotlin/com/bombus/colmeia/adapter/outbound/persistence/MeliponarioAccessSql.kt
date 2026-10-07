@@ -3,8 +3,7 @@ package com.bombus.colmeia.adapter.outbound.persistence
 /**
  * The only definition of "usuário :userId may access this meliponário".
  *
- * Access is a row in meliponario_membro. meliponario.owner_id grants nothing.
- * Both fragments bind the named parameter :userId.
+ * Access is a row in meliponario_membro. Both fragments bind :userId.
  * EXISTS keeps the predicate a filter, so COUNT and GROUP BY never see extra rows.
  */
 private fun memberOf(meliponarioIdColumn: String): String = """
