@@ -32,7 +32,7 @@ class FlywayMigrationIntegrationTest {
             String::class.java,
         )
 
-        assertThat(applied).contains("1", "2", "3")
+        assertThat(applied).contains("1", "2", "3", "4", "6")
     }
 
     @Test
@@ -46,6 +46,7 @@ class FlywayMigrationIntegrationTest {
             "especie",
             "usuario",
             "meliponario",
+            "meliponario_membro",
             "status_colmeia",
             "colmeia",
             "colmeia_status_historico",
