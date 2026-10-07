@@ -11,6 +11,7 @@ class ChatbotAgentPropertiesTest {
 
         assertThat(reply)
             .contains("listar")
+            .contains("histórico de visitas")
             .contains("cadastrar")
             .contains("visita de status")
             .contains("perdida/vendida")

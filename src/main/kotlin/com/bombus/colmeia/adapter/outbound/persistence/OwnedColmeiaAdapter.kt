@@ -2,6 +2,7 @@ package com.bombus.colmeia.adapter.outbound.persistence
 
 import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
+import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
@@ -50,6 +51,20 @@ class OwnedColmeiaAdapter(
                 .addValue("userId", userId)
                 .addValue("code", code),
             SUMMARY_MAPPER,
+        )
+
+    override fun listStatusHistory(
+        userId: Long,
+        colmeiaId: Long,
+        limit: Int,
+    ): List<ColmeiaStatusHistoryEntry> =
+        jdbc.query(
+            LIST_STATUS_HISTORY_SQL,
+            MapSqlParameterSource()
+                .addValue("userId", userId)
+                .addValue("colmeiaId", colmeiaId)
+                .addValue("limit", limit),
+            HISTORY_MAPPER,
         )
 
     override fun isCodeTaken(
@@ -197,11 +212,32 @@ class OwnedColmeiaAdapter(
             ORDER BY c.id
         """.trimIndent()
 
+        val LIST_STATUS_HISTORY_SQL = """
+            SELECT h.recorded_at AS recorded_at,
+                   s.name AS status_name,
+                   h.note AS note
+            FROM colmeia_status_historico h
+            JOIN colmeia c ON c.id = h.colmeia_id
+            JOIN status_colmeia s ON s.id = h.status_id
+            WHERE h.colmeia_id = :colmeiaId
+              AND $ACCESSIBLE_COLMEIA
+            ORDER BY h.recorded_at DESC, h.id DESC
+            LIMIT :limit
+        """.trimIndent()
+
         val DELETE_ACCESSIBLE_SQL = """
             DELETE FROM colmeia c
             WHERE c.id = :colmeiaId
               AND $ACCESSIBLE_COLMEIA
         """.trimIndent()
+
+        val HISTORY_MAPPER = RowMapper { rs, _ ->
+            ColmeiaStatusHistoryEntry(
+                recordedAt = rs.getTimestamp("recorded_at").toInstant(),
+                statusName = rs.getString("status_name"),
+                note = rs.getString("note"),
+            )
+        }
 
         val CODE_TAKEN_SQL = """
             SELECT COUNT(*)

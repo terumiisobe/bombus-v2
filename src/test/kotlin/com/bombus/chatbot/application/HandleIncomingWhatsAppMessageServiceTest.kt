@@ -20,6 +20,8 @@ import com.bombus.colmeia.application.port.inbound.CountColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.CountDimension
 import com.bombus.colmeia.application.port.inbound.CreateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryQuery
+import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
@@ -30,6 +32,7 @@ import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
 import com.bombus.colmeia.application.ColmeiaCountProperties
 import com.bombus.colmeia.domain.ColmeiaCount
+import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.ColmeiaVocabulary
 import com.bombus.colmeia.domain.SpeciesCount
@@ -246,6 +249,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
             countColmeias = count,
             vocabularyUseCase = FakeVocabulary,
             listOwnedColmeias = NoopListOwned,
+            listColmeiaHistory = NoopListHistory,
             createColmeia = NoopCreate,
             recordColmeiaStatus = NoopRecordStatus,
             deleteColmeia = NoopDelete,
@@ -313,6 +317,10 @@ class HandleIncomingWhatsAppMessageServiceTest {
 
     private object NoopListOwned : ListOwnedColmeiasUseCase {
         override fun list(query: ListOwnedColmeiasQuery): List<ColmeiaSummary> = emptyList()
+    }
+
+    private object NoopListHistory : ListColmeiaHistoryUseCase {
+        override fun list(query: ListColmeiaHistoryQuery): List<ColmeiaStatusHistoryEntry> = emptyList()
     }
 
     private object NoopCreate : CreateColmeiaUseCase {

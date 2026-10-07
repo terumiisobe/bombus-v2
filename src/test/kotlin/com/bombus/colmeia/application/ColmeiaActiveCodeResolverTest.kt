@@ -3,6 +3,7 @@ package com.bombus.colmeia.application
 import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
 import com.bombus.colmeia.domain.ColmeiaCommandError
+import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import java.time.Instant
 import kotlin.test.Test
@@ -65,6 +66,7 @@ class ColmeiaActiveCodeResolverTest {
         override fun listByOwner(userId: Long, excludeStatusIds: Collection<Long>, limit: Int, offset: Int) =
             emptyList<ColmeiaSummary>()
         override fun findByCodeForOwner(userId: Long, code: Int) = matches
+        override fun listStatusHistory(userId: Long, colmeiaId: Long, limit: Int) = emptyList<ColmeiaStatusHistoryEntry>()
         override fun isCodeTaken(
             meliponarioId: Long,
             code: Int,

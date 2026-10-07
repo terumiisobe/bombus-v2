@@ -1,5 +1,6 @@
 package com.bombus.colmeia.application.port.outbound
 
+import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import java.time.Instant
 
@@ -15,6 +16,7 @@ import java.time.Instant
  *
  * Delete is a hard DELETE of the colmeia row (cascades history/location).
  * Status changes append history via [appendStatus] (visit-oriented fields optional).
+ * [listStatusHistory] re-checks membership for [colmeiaId].
  */
 interface OwnedColmeiaPort {
 
@@ -32,6 +34,16 @@ interface OwnedColmeiaPort {
         userId: Long,
         code: Int,
     ): List<ColmeiaSummary>
+
+    /**
+     * Latest [limit] historico rows for [colmeiaId], newest first
+     * (`recorded_at` DESC, `id` DESC). Empty if the hive is not accessible to [userId].
+     */
+    fun listStatusHistory(
+        userId: Long,
+        colmeiaId: Long,
+        limit: Int,
+    ): List<ColmeiaStatusHistoryEntry>
 
     /**
      * Whether [code] is held by another hive in [meliponarioId].

@@ -11,6 +11,8 @@ import com.bombus.colmeia.application.port.inbound.CreateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryQuery
+import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
@@ -36,6 +38,7 @@ class ChatToolExecutor(
     private val countColmeias: CountColmeiasUseCase,
     private val vocabularyUseCase: ListColmeiaVocabularyUseCase,
     private val listOwnedColmeias: ListOwnedColmeiasUseCase,
+    private val listColmeiaHistory: ListColmeiaHistoryUseCase,
     private val createColmeia: CreateColmeiaUseCase,
     private val recordColmeiaStatus: RecordColmeiaStatusUseCase,
     private val deleteColmeia: DeleteColmeiaUseCase,
@@ -47,6 +50,7 @@ class ChatToolExecutor(
         COUNT_COLMEIAS_DEF,
         LIST_VOCABULARY_DEF,
         LIST_COLMEIAS_DEF,
+        LIST_COLMEIA_HISTORY_DEF,
         CREATE_COLMEIA_DEF,
         UPDATE_COLMEIA_DEF,
         DELETE_COLMEIA_DEF,
@@ -58,6 +62,7 @@ class ChatToolExecutor(
                 ChatToolNames.COUNT_COLMEIAS -> executeCount(userId, call.argumentsJson)
                 ChatToolNames.LIST_VOCABULARY -> executeListVocabulary()
                 ChatToolNames.LIST_COLMEIAS -> executeList(userId, call.argumentsJson)
+                ChatToolNames.LIST_COLMEIA_HISTORY -> executeListHistory(userId, call.argumentsJson)
                 ChatToolNames.CREATE_COLMEIA -> executeCreate(userId, call.argumentsJson)
                 ChatToolNames.UPDATE_COLMEIA -> executeUpdate(userId, call.argumentsJson)
                 ChatToolNames.DELETE_COLMEIA -> executeDelete(userId, call.argumentsJson)
@@ -186,6 +191,32 @@ class ChatToolExecutor(
                 "mode" to "list",
                 "count" to items.size,
                 "items" to items.map { it.toCompactMap() },
+            ),
+        )
+    }
+
+    private fun executeListHistory(userId: Long, argumentsJson: String): String {
+        val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
+        val code = args.optionalInt("code")
+            ?: return errorJson("missing_code", "code is required")
+        val entries = listColmeiaHistory.list(
+            ListColmeiaHistoryQuery(
+                userId = userId,
+                code = code,
+                limit = args.optionalInt("limit") ?: ListColmeiaHistoryQuery.DEFAULT_LIMIT,
+            ),
+        )
+        return objectMapper.writeValueAsString(
+            mapOf(
+                "code" to code,
+                "count" to entries.size,
+                "visits" to entries.map { entry ->
+                    mapOf(
+                        "date" to entry.recordedAt.toString(),
+                        "status" to entry.statusName,
+                        "note" to entry.note,
+                    )
+                },
             ),
         )
     }
@@ -424,6 +455,28 @@ class ChatToolExecutor(
                         "description" to "Pagination offset (default 0)",
                     ),
                 ),
+                "additionalProperties" to false,
+            ),
+        )
+
+        val LIST_COLMEIA_HISTORY_DEF = ToolDefinition(
+            name = ChatToolNames.LIST_COLMEIA_HISTORY,
+            description =
+                "Last N field visits / status observations for one owned hive by code " +
+                    "(date, status name, optional note). Newest first. Prefer this when the user asks " +
+                    "for histórico / últimas visitas of a code. Does not include source or visit-time " +
+                    "overrides. Membership-scoped; if a code was reused after perdida/vendida, uses the " +
+                    "active hive. Never pass numeric ids.",
+            parametersJsonSchema = mapOf(
+                "type" to "object",
+                "properties" to mapOf(
+                    "code" to mapOf("type" to "integer", "description" to "Hive code"),
+                    "limit" to mapOf(
+                        "type" to listOf("integer", "null"),
+                        "description" to "Max visits to return (1-50, default 10)",
+                    ),
+                ),
+                "required" to listOf("code"),
                 "additionalProperties" to false,
             ),
         )
