@@ -1,5 +1,6 @@
 package com.bombus.colmeia.adapter.outbound.persistence
 
+import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
 import com.bombus.config.BombusApplication
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -12,7 +13,9 @@ import org.springframework.transaction.annotation.Transactional
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import java.sql.Timestamp
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 @Testcontainers
 @Transactional
@@ -88,7 +91,9 @@ class OwnedColmeiaAdapterIntegrationTest {
         assertThat(adapter.isCodeTaken(MEL, 9)).isTrue()
 
         // Must be after insert's NOW() status row so "latest" is perdida.
-        val lost = adapter.appendStatus(first.id, perdidaId, Instant.now().plusSeconds(60))!!
+        val lost = adapter.appendStatus(
+            AppendColmeiaStatus(first.id, perdidaId, Instant.now().plusSeconds(60)),
+        )!!
         assertThat(lost.code).isEqualTo(9)
         assertThat(adapter.isCodeTaken(MEL, 9, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
@@ -107,7 +112,9 @@ class OwnedColmeiaAdapterIntegrationTest {
             startDate = Instant.parse("2026-01-01T00:00:00Z"),
             initialStatusId = desenvolvendoId,
         )
-        val sold = adapter.appendStatus(first.id, vendidaId, Instant.now().plusSeconds(60))!!
+        val sold = adapter.appendStatus(
+            AppendColmeiaStatus(first.id, vendidaId, Instant.now().plusSeconds(60)),
+        )!!
         assertThat(sold.code).isEqualTo(8)
         assertThat(adapter.isCodeTaken(MEL, 8, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
@@ -136,6 +143,122 @@ class OwnedColmeiaAdapterIntegrationTest {
 
         assertThat(listed).extracting("id").containsExactly(living.id, 99L)
         assertThat(listed).extracting("id").doesNotContain(lost.id, sold.id)
+    }
+
+    @Test
+    fun `appendStatus stores actor note and source and updates current status`() {
+        val created = adapter.insert(
+            code = 13,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = null,
+            initialStatusId = desenvolvendoId,
+        )
+        // Must be after insert's NOW() so this row becomes current by recorded_at ordering.
+        // Truncate to micros — Postgres timestamptz stores microsecond precision.
+        val recordedAt = Instant.now().plus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS)
+
+        val updated = adapter.appendStatus(
+            AppendColmeiaStatus(
+                colmeiaId = created.id,
+                statusId = estavelId,
+                recordedAt = recordedAt,
+                recordedByUserId = OWNER,
+                note = "forte, bastante forrageio",
+                source = "whatsapp",
+            ),
+        )
+
+        assertThat(updated).isNotNull
+        assertThat(updated!!.statusId).isEqualTo(estavelId)
+        assertThat(updated.statusName).isEqualTo("estavel")
+
+        val row = jdbcTemplate.queryForMap(
+            """
+            SELECT status_id, recorded_at, recorded_by_user_id, note, source
+            FROM colmeia_status_historico
+            WHERE colmeia_id = ?
+            ORDER BY recorded_at DESC, id DESC
+            LIMIT 1
+            """.trimIndent(),
+            created.id,
+        )
+        assertThat(row["status_id"] as Long).isEqualTo(estavelId)
+        assertThat((row["recorded_at"] as Timestamp).toInstant()).isEqualTo(recordedAt)
+        assertThat(row["recorded_by_user_id"] as Long).isEqualTo(OWNER)
+        assertThat(row["note"] as String).isEqualTo("forte, bastante forrageio")
+        assertThat(row["source"] as String).isEqualTo("whatsapp")
+    }
+
+    @Test
+    fun `appendStatus allows null enrichment fields`() {
+        val created = adapter.insert(
+            code = 14,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = null,
+            initialStatusId = desenvolvendoId,
+        )
+
+        val updated = adapter.appendStatus(
+            AppendColmeiaStatus(
+                colmeiaId = created.id,
+                statusId = estavelId,
+                recordedAt = Instant.now().plus(1, ChronoUnit.HOURS),
+            ),
+        )
+
+        assertThat(updated!!.statusId).isEqualTo(estavelId)
+        val row = jdbcTemplate.queryForMap(
+            """
+            SELECT recorded_by_user_id, note, source
+            FROM colmeia_status_historico
+            WHERE colmeia_id = ?
+            ORDER BY recorded_at DESC, id DESC
+            LIMIT 1
+            """.trimIndent(),
+            created.id,
+        )
+        assertThat(row["recorded_by_user_id"]).isNull()
+        assertThat(row["note"]).isNull()
+        assertThat(row["source"]).isNull()
+    }
+
+    @Test
+    fun `latest status is ordered by recorded_at then id`() {
+        val created = adapter.insert(
+            code = 15,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = null,
+            initialStatusId = desenvolvendoId,
+        )
+        val later = Instant.now().plus(2, ChronoUnit.HOURS)
+        val earlier = Instant.now().minus(1, ChronoUnit.HOURS)
+
+        adapter.appendStatus(
+            AppendColmeiaStatus(
+                colmeiaId = created.id,
+                statusId = estavelId,
+                recordedAt = later,
+                source = "whatsapp",
+            ),
+        )
+        // Older row inserted after the newer one — sort must use recorded_at, not insert order.
+        jdbcTemplate.update(
+            """
+            INSERT INTO colmeia_status_historico (colmeia_id, status_id, recorded_at, source)
+            VALUES (?, ?, CAST(? AS timestamptz), ?)
+            """.trimIndent(),
+            created.id,
+            desenvolvendoId,
+            earlier.toString(),
+            "admin",
+        )
+
+        val current = adapter.findByCodeForOwner(OWNER, 15).single()
+        assertThat(current.statusId).isEqualTo(estavelId)
+        assertThat(current.statusName).isEqualTo("estavel")
     }
 
     @Test

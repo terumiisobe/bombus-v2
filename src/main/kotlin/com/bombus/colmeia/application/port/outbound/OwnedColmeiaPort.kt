@@ -14,6 +14,7 @@ import java.time.Instant
  * meliponário or colmeia id through a `userId`-scoped method in the same use-case call.
  *
  * Delete is a hard DELETE of the colmeia row (cascades history/location).
+ * Status changes append history via [appendStatus] (visit-oriented fields optional).
  */
 interface OwnedColmeiaPort {
 
@@ -52,7 +53,7 @@ interface OwnedColmeiaPort {
         initialStatusId: Long,
     ): ColmeiaSummary
 
-    fun appendStatus(colmeiaId: Long, statusId: Long, recordedAt: Instant): ColmeiaSummary?
+    fun appendStatus(append: AppendColmeiaStatus): ColmeiaSummary?
 
     fun deleteByIdForOwner(userId: Long, colmeiaId: Long): Boolean
 }

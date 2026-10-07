@@ -4,6 +4,7 @@ import com.bombus.colmeia.application.port.inbound.CreateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.UpdateColmeiaCommand
+import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
 import com.bombus.colmeia.application.port.outbound.ColmeiaVocabularyPort
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
 import com.bombus.colmeia.application.port.outbound.StatusColmeiaLookupPort
@@ -216,7 +217,9 @@ class ColmeiaCrudServicesTest {
 
         assertEquals(101L, updated.id)
         assertEquals(STATUS_ESTAVEL, updated.statusId)
-        assertEquals(listOf(101L to STATUS_ESTAVEL), port.appendedStatuses)
+        assertEquals(1, port.appendedStatuses.size)
+        assertEquals(101L, port.appendedStatuses.single().colmeiaId)
+        assertEquals(STATUS_ESTAVEL, port.appendedStatuses.single().statusId)
     }
 
     @Test
@@ -261,7 +264,7 @@ class ColmeiaCrudServicesTest {
         val byId = mutableMapOf<Long, ColmeiaSummary>()
         val byCode = mutableMapOf<Int, List<ColmeiaSummary>>()
         val inserts = mutableListOf<ColmeiaSummary>()
-        val appendedStatuses = mutableListOf<Pair<Long, Long>>()
+        val appendedStatuses = mutableListOf<AppendColmeiaStatus>()
         val deletedIds = mutableListOf<Long>()
         private var seq = 200L
 
@@ -314,12 +317,12 @@ class ColmeiaCrudServicesTest {
             return summary
         }
 
-        override fun appendStatus(colmeiaId: Long, statusId: Long, recordedAt: Instant): ColmeiaSummary? {
-            val current = byId[colmeiaId] ?: return null
-            appendedStatuses += colmeiaId to statusId
+        override fun appendStatus(append: AppendColmeiaStatus): ColmeiaSummary? {
+            val current = byId[append.colmeiaId] ?: return null
+            appendedStatuses += append
             val next = current.copy(
-                statusId = statusId,
-                statusName = when (statusId) {
+                statusId = append.statusId,
+                statusName = when (append.statusId) {
                     STATUS_PERDIDA -> "perdida"
                     STATUS_VENDIDA -> "vendida"
                     STATUS_DESENVOLVENDO -> "desenvolvendo"
@@ -327,7 +330,7 @@ class ColmeiaCrudServicesTest {
                     else -> "other"
                 },
             )
-            byId[colmeiaId] = next
+            byId[append.colmeiaId] = next
             return next
         }
 
