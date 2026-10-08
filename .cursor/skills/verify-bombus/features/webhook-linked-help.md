@@ -34,7 +34,7 @@ docker exec bombus-postgres psql -U bombus_usr -d bombus -c \
 
 - Env from `meta.env` exported (`BASE_URL`, `TWILIO_*`).
 
-- **Ask for help / trigger fallback.** Run `.cursor/skills/verify-bombus/scripts/post-webhook.sh --from '+15550001234' --body 'ajuda' --out .cursor/skills/verify-bombus/artifacts/webhook-linked-help/response.xml --headers .cursor/skills/verify-bombus/artifacts/webhook-linked-help/headers.txt`. Observable: HTTP `200`; TwiML `<Message>` is non-empty pt-BR. With a disposable OpenAI key against the real API, expect the fallback containing `listar, adicionar, excluir` (from `ChatbotAgentProperties.fallbackReply`).
+- **Ask for help / trigger fallback.** Run `.cursor/skills/verify-bombus/scripts/post-webhook.sh --from '+15550001234' --body 'ajuda' --out .cursor/skills/verify-bombus/artifacts/webhook-linked-help/response.xml --headers .cursor/skills/verify-bombus/artifacts/webhook-linked-help/headers.txt`. Observable: HTTP `200`; TwiML `<Message>` is non-empty pt-BR. With a disposable OpenAI key against the real API, expect the fallback to mention listar/cadastrar/visita and soft exits (`perdida`/`vendida`), with exclusão só para erro de cadastro (`ChatbotAgentProperties.fallbackReply`).
 - **Confirm session.** Query `sessao_chat` joined to `usuario_whatsapp` for `+15550001234` — expect a row with recent `last_message_at`.
 - **Proof.** Save XML, headers, SQL result snippet under `artifacts/webhook-linked-help/`.
 

@@ -11,9 +11,10 @@ class ChatbotAgentPropertiesTest {
 
         assertThat(reply)
             .contains("listar")
-            .contains("adicionar")
-            .contains("excluir")
-            .contains("atualizar o status")
+            .contains("cadastrar")
+            .contains("visita de status")
+            .contains("perdida/vendida")
+            .contains("erro de cadastro")
             .contains("contar")
             .doesNotContain("é só me avisar")
             .doesNotContain("se precisar de mais informações")
