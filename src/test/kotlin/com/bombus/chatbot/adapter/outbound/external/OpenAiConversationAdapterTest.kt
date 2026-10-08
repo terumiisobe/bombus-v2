@@ -76,15 +76,15 @@ class OpenAiConversationAdapterTest {
             .contains("speciesScientificName")
             .contains("excludedStatusLabel")
             .contains("Primeira interação")
-            .contains("listar, adicionar, excluir")
-            .contains("atualizar o status")
+            .contains("cadastrar")
+            .contains("acompanhamento/visita")
             .contains("é só me avisar!")
             .contains("Tom e estilo")
     }
 
     @Test
     fun `system prompt discourages pushy closers and requires first-turn capability overview`() {
-        enqueueFinalReply("Oi! Posso listar, adicionar, excluir, atualizar o status e contar suas colmeias.")
+        enqueueFinalReply("Oi! Posso listar, cadastrar, registrar visitas e contar suas colmeias.")
 
         adapter.complete(listOf(AgentMessage.User("oi")), tools)
 
@@ -95,6 +95,11 @@ class OpenAiConversationAdapterTest {
             .contains("é só me avisar!")
             .contains("se precisar de mais informações")
             .contains("Não repita esse overview em todo turno")
+            .contains("acompanhamento/visita")
+            .contains("erro de cadastro")
+            .contains("perdida ou vendida")
+            .contains("note opcional")
+            .doesNotContain("visitedAt")
     }
 
     @Test

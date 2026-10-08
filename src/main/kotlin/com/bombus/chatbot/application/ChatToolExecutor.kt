@@ -250,6 +250,7 @@ class ChatToolExecutor(
                 userId = userId,
                 code = code,
                 statusId = status.id,
+                note = args.optionalString("note"),
             ),
         )
         return objectMapper.writeValueAsString(mapOf("colmeia" to updated.toCompactMap()))
@@ -430,8 +431,8 @@ class ChatToolExecutor(
         val CREATE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.CREATE_COLMEIA,
             description =
-                "Create a hive for the linked customer. species (common name) required from list_vocabulary. " +
-                    "code and startDate only if the user provided them (otherwise null). " +
+                "Cadastro: register a hive for the linked customer. species (common name) required from " +
+                    "list_vocabulary. code and startDate only if the user provided them (otherwise null). " +
                     "status defaults to desenvolvendo. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
@@ -461,15 +462,26 @@ class ChatToolExecutor(
         val UPDATE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.UPDATE_COLMEIA,
             description =
-                "Update an owned active hive status. Identify by code (exactly one active hive; " +
-                    "perdida/vendida with that code are ignored). Only status (name) is mutable (appends history). " +
-                    "Marking perdida or vendida frees the code for reuse on a new hive (code stays on the old row). " +
-                    "Species, meliponário, and startDate stay fixed. Never pass numeric ids.",
+                "Acompanhamento/visita: record a field visit or status observation for an owned active hive. " +
+                    "Identify by code (exactly one active hive; perdida/vendida with that code are ignored). " +
+                    "Always appends historico (including same-status confirmations). status (name) required; " +
+                    "optional short note only if the user supplied one (otherwise null). Do not pass visit " +
+                    "timestamps. Prefer perdida/vendida over delete when the hive left the yard for real; " +
+                    "marking them frees the code for reuse. Species, meliponário, and startDate stay fixed. " +
+                    "Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
                     "code" to mapOf("type" to "integer", "description" to "Hive code"),
-                    "status" to mapOf("type" to "string", "description" to "New status name (appends history)"),
+                    "status" to mapOf(
+                        "type" to "string",
+                        "description" to "Observed status name (appends historico, including same status)",
+                    ),
+                    "note" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to
+                            "Optional short field remark only if the user supplied one; otherwise null",
+                    ),
                 ),
                 "required" to listOf("code", "status"),
                 "additionalProperties" to false,
@@ -479,9 +491,11 @@ class ChatToolExecutor(
         val DELETE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.DELETE_COLMEIA,
             description =
-                "Permanently delete an owned active hive by code (hard delete, irreversible). " +
-                    "Exactly one active hive for that code; perdida/vendida with the same code are ignored. " +
-                    "Only call after the user explicitly confirmed. Pass confirmed=true.",
+                "Cadastro: permanently delete an owned active hive by code (hard delete, irreversible). " +
+                    "Use only for registry mistakes (never existed / wrong entry). Prefer update_colmeia to " +
+                    "perdida or vendida when the hive left the yard for real. Exactly one active hive for " +
+                    "that code; perdida/vendida with the same code are ignored. Only call after the user " +
+                    "explicitly confirmed. Pass confirmed=true.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
