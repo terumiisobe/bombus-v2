@@ -102,6 +102,9 @@ class OpenAiConversationAdapterTest {
             .contains("mesma lista de config")
             .contains("marcar perdida/vendida")
             .contains("note opcional")
+            .contains("list_colmeia_history")
+            .contains("histórico / últimas visitas")
+            .contains("date, status, note")
             .doesNotContain("visitedAt")
             .doesNotContain("source")
     }

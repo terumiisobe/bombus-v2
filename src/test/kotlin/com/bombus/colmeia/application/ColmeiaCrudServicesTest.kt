@@ -9,6 +9,7 @@ import com.bombus.colmeia.application.port.outbound.ColmeiaVocabularyPort
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
 import com.bombus.colmeia.application.port.outbound.StatusColmeiaLookupPort
 import com.bombus.colmeia.domain.ColmeiaCommandError
+import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.SpeciesRef
 import com.bombus.colmeia.domain.StatusRef
@@ -331,6 +332,12 @@ class ColmeiaCrudServicesTest {
 
         override fun findByCodeForOwner(userId: Long, code: Int): List<ColmeiaSummary> =
             byCode[code].orEmpty()
+
+        override fun listStatusHistory(
+            userId: Long,
+            colmeiaId: Long,
+            limit: Int,
+        ): List<ColmeiaStatusHistoryEntry> = emptyList()
 
         override fun isCodeTaken(
             meliponarioId: Long,

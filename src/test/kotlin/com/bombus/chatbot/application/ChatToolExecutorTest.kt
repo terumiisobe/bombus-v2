@@ -9,6 +9,8 @@ import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.DeletedColmeia
+import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryQuery
+import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
@@ -16,6 +18,7 @@ import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
 import com.bombus.colmeia.application.ColmeiaCountProperties
 import com.bombus.colmeia.domain.ColmeiaCount
+import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.ColmeiaVocabulary
 import com.bombus.colmeia.domain.SpeciesCount
@@ -33,6 +36,7 @@ class ChatToolExecutorTest {
     private val objectMapper = jacksonObjectMapper()
     private val count = RecordingCount(ColmeiaCount(total = 0))
     private val listOwned = RecordingList()
+    private val listHistory = RecordingHistory()
     private val create = RecordingCreate()
     private val update = RecordingUpdate()
     private val delete = RecordingDelete()
@@ -40,6 +44,7 @@ class ChatToolExecutorTest {
         countColmeias = count,
         vocabularyUseCase = FakeVocabulary,
         listOwnedColmeias = listOwned,
+        listColmeiaHistory = listHistory,
         createColmeia = create,
         recordColmeiaStatus = update,
         deleteColmeia = delete,
@@ -365,6 +370,68 @@ class ChatToolExecutorTest {
     }
 
     @Test
+    fun `list_colmeia_history returns date status and note without source or visitedAt`() {
+        listHistory.items = listOf(
+            ColmeiaStatusHistoryEntry(
+                recordedAt = Instant.parse("2026-10-01T12:00:00Z"),
+                statusName = "estavel",
+                note = "ok",
+            ),
+        )
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_hist",
+                name = ChatToolNames.LIST_COLMEIA_HISTORY,
+                argumentsJson = """{"code":7,"limit":5}""",
+            ),
+        )
+
+        assertEquals(
+            ListColmeiaHistoryQuery(userId = 42L, code = 7, limit = 5),
+            listHistory.lastQuery,
+        )
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals(7, json.path("code").asInt())
+        assertEquals(1, json.path("count").asInt())
+        val visit = json.path("visits").path(0)
+        assertEquals("2026-10-01T12:00:00Z", visit.path("date").asText())
+        assertEquals("estavel", visit.path("status").asText())
+        assertEquals("ok", visit.path("note").asText())
+        assertTrue(visit.path("source").isMissingNode)
+        assertTrue(visit.path("visitedAt").isMissingNode)
+    }
+
+    @Test
+    fun `list_colmeia_history defaults limit and requires code`() {
+        listHistory.items = emptyList()
+        executor.execute(
+            userId = 1L,
+            call = AssistantToolCall(
+                id = "call_hist_def",
+                name = ChatToolNames.LIST_COLMEIA_HISTORY,
+                argumentsJson = """{"code":3}""",
+            ),
+        )
+        assertEquals(
+            ListColmeiaHistoryQuery(userId = 1L, code = 3, limit = ListColmeiaHistoryQuery.DEFAULT_LIMIT),
+            listHistory.lastQuery,
+        )
+
+        listHistory.lastQuery = null
+        val missing = executor.execute(
+            userId = 1L,
+            call = AssistantToolCall(
+                id = "call_hist_miss",
+                name = ChatToolNames.LIST_COLMEIA_HISTORY,
+                argumentsJson = """{}""",
+            ),
+        )
+        assertEquals("missing_code", objectMapper.readTree(missing.contentJson).path("error").asText())
+        assertNull(listHistory.lastQuery)
+    }
+
+    @Test
     fun `definitions expose name-based species and status params`() {
         val names = executor.definitions().map { it.name }
         assertEquals(
@@ -372,6 +439,7 @@ class ChatToolExecutorTest {
                 ChatToolNames.COUNT_COLMEIAS,
                 ChatToolNames.LIST_VOCABULARY,
                 ChatToolNames.LIST_COLMEIAS,
+                ChatToolNames.LIST_COLMEIA_HISTORY,
                 ChatToolNames.CREATE_COLMEIA,
                 ChatToolNames.UPDATE_COLMEIA,
                 ChatToolNames.DELETE_COLMEIA,
@@ -385,6 +453,14 @@ class ChatToolExecutorTest {
         assertTrue(countProps.containsKey("status"))
         assertTrue(!countProps.containsKey("speciesId"))
         assertTrue(!countProps.containsKey("statusId"))
+
+        val historyDef = executor.definitions().first { it.name == ChatToolNames.LIST_COLMEIA_HISTORY }
+        assertTrue(historyDef.description.contains("histórico", ignoreCase = true))
+        val historyProps = historyDef.parametersJsonSchema["properties"] as Map<*, *>
+        assertTrue(historyProps.containsKey("code"))
+        assertTrue(historyProps.containsKey("limit"))
+        assertTrue(!historyProps.containsKey("source"))
+        assertTrue(!historyProps.containsKey("visitedAt"))
     }
 
     @Test
@@ -422,6 +498,16 @@ class ChatToolExecutorTest {
             private set
 
         override fun list(query: ListOwnedColmeiasQuery): List<ColmeiaSummary> {
+            lastQuery = query
+            return items
+        }
+    }
+
+    private class RecordingHistory : ListColmeiaHistoryUseCase {
+        var items: List<ColmeiaStatusHistoryEntry> = emptyList()
+        var lastQuery: ListColmeiaHistoryQuery? = null
+
+        override fun list(query: ListColmeiaHistoryQuery): List<ColmeiaStatusHistoryEntry> {
             lastQuery = query
             return items
         }

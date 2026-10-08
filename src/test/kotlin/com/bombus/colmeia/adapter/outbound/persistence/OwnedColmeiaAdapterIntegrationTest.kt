@@ -146,6 +146,52 @@ class OwnedColmeiaAdapterIntegrationTest {
     }
 
     @Test
+    fun `listStatusHistory returns newest first with date status and note for members only`() {
+        insertUsuario(MEMBER, "m@x.test")
+        addMember(MEL, MEMBER)
+        insertUsuario(OTHER, "p@x.test")
+
+        val hive = adapter.insert(
+            code = 21,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = null,
+            initialStatusId = desenvolvendoId,
+        )
+        val mid = Instant.now().plus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS)
+        val newest = Instant.now().plus(2, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS)
+        adapter.appendStatus(
+            AppendColmeiaStatus(
+                colmeiaId = hive.id,
+                statusId = estavelId,
+                recordedAt = mid,
+                recordedByUserId = OWNER,
+                note = "boa",
+            ),
+        )
+        adapter.appendStatus(
+            AppendColmeiaStatus(
+                colmeiaId = hive.id,
+                statusId = perdidaId,
+                recordedAt = newest,
+                note = "sumiu",
+            ),
+        )
+
+        val history = adapter.listStatusHistory(MEMBER, hive.id, limit = 2)
+        assertThat(history).hasSize(2)
+        assertThat(history[0].recordedAt).isEqualTo(newest)
+        assertThat(history[0].statusName).isEqualTo("perdida")
+        assertThat(history[0].note).isEqualTo("sumiu")
+        assertThat(history[1].recordedAt).isEqualTo(mid)
+        assertThat(history[1].statusName).isEqualTo("estavel")
+        assertThat(history[1].note).isEqualTo("boa")
+
+        assertThat(adapter.listStatusHistory(OTHER, hive.id, limit = 10)).isEmpty()
+        assertThat(adapter.listStatusHistory(MEMBER, hive.id, limit = 1)).hasSize(1)
+    }
+
+    @Test
     fun `appendStatus stores actor and note and updates current status`() {
         val created = adapter.insert(
             code = 13,
