@@ -605,10 +605,13 @@ class ChatToolExecutor(
         val DELETE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.DELETE_COLMEIA,
             description =
-                "Permanently delete one hive. Prefer the active hive for the code. A perdida or vendida hive " +
-                    "can be deleted: ask once, naming that status, then call with confirmed=true. " +
-                    "Optional status selects that inactive hive when an active hive shares the code. " +
-                    "Do not redirect excluir into perdida or vendida. Never pass numeric ids.",
+                "Permanently delete one hive (active or already perdida/vendida — same flow). Prefer the " +
+                    "active hive when the code is ambiguous. Ask once for confirmation, then call with " +
+                    "confirmed=true; the write uses the resolved hive id. On that first confirmation " +
+                    "turn in the conversation, mention perdida/vendida as an optional alternative; do " +
+                    "not keep re-suggesting soft exit. Optional status selects the inactive hive when " +
+                    "an active hive shares the code. Do not redirect excluir into perdida or vendida. " +
+                    "Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(

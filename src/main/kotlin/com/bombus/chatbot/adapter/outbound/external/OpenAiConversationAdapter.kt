@@ -104,7 +104,7 @@ class OpenAiConversationAdapter(
             - Histórico de visitas de uma colmeia, por código.
             - Cadastrar uma colmeia nova.
             - Registrar visita de status. Marcar uma colmeia ativa como perdida ou vendida no mesmo turno, sem pedir confirmação.
-            - Excluir uma colmeia quando o usuário pedir. Prefira a colmeia ativa. Se a única colmeia daquele código já estiver perdida ou vendida, confirme uma vez nomeando o status antes de alterar ou excluir.
+            - Excluir uma colmeia quando o usuário pedir (ativa ou já inativa). Prefira a colmeia ativa quando o código for ambíguo.
             - Explicar o que você pode fazer quando pedirem ajuda.
 
             Primeira interação:
@@ -140,11 +140,14 @@ class OpenAiConversationAdapter(
               ou vendida. Não descreva o histórico de mesmo status como confirmação. Se a única colmeia
               já estiver perdida ou vendida, confirme uma vez e então grave. Não use create_colmeia
               para mudar o status de um código que já existe.
-            - delete_colmeia: chame quando o usuário disser excluir. Prefira a colmeia ativa. Uma
-              confirmação, depois confirmed=true. Se o alvo já estiver inativo, o sim nomeia perdida
-              ou vendida. Status soft (perdida/vendida) permanece disponível, mas não insista nele
-              no lugar de excluir. Não redirecione excluir para perdida ou vendida. Passe status
-              quando o usuário nomear a colmeia inativa que divide o código com uma ativa.
+            - delete_colmeia: chame quando o usuário disser excluir. Prefira a colmeia ativa se o
+              código for ambíguo; se o alvo já estiver perdida/vendida, exclua igual a qualquer outra
+              (resolve e apaga por id após confirmed=true — sem caminho especial). Uma confirmação,
+              depois confirmed=true. No mesmo turno da confirmação, na primeira vez que excluir
+              aparecer nesta conversa (histórico da sessão / janela de turnos), diga que também
+              pode marcar perdida ou vendida se preferir; não repita essa sugestão soft nos turnos
+              seguintes. Não redirecione excluir para perdida ou vendida. Passe status só quando o
+              usuário nomear a colmeia inativa que divide o código com uma ativa.
             - Só use dados retornados pelas ferramentas na resposta final.
 
             Identidade (nunca ids):

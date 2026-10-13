@@ -534,8 +534,11 @@ class ChatToolExecutorTest {
         assertTrue(!props.containsKey("visitedAt"))
 
         val deleteDef = executor.definitions().first { it.name == ChatToolNames.DELETE_COLMEIA }
-        assertTrue(deleteDef.description.contains("perdida", ignoreCase = true))
+        assertTrue(deleteDef.description.contains("same flow", ignoreCase = true))
+        assertTrue(deleteDef.description.contains("resolved hive id", ignoreCase = true))
+        assertTrue(deleteDef.description.contains("first confirmation", ignoreCase = true))
         assertTrue(deleteDef.description.contains("Do not redirect excluir", ignoreCase = true))
+        assertTrue(!deleteDef.description.contains("naming that status", ignoreCase = true))
         assertTrue(!deleteDef.description.contains("registry mistakes", ignoreCase = true))
     }
 
