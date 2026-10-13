@@ -127,15 +127,16 @@ class OpenAiConversationAdapter(
               o usuário disser vendidas) conta só vendidas; total é essa contagem. Não responda com
               o total padrão nem com detalhar. Em unknown_status, não chame de novo sem o status.
             - list_vocabulary: nomes válidos de espécie/status antes de filtrar ou criar/atualizar.
-            - detail_colmeia: uma colmeia; repita código, espécie, status e última visita. Sem ids.
-              Prefira a colmeia ativa. Leitura não pede confirmação.
-            - list_colmeia_history: as linhas do JSON, em ordem, para WhatsApp. Sem timestamps crus nem ids.
+            - detail_colmeia: uma colmeia; repita código, espécie (com speciesScientificName quando vier),
+              status e última visita. Sem ids. Prefira a colmeia ativa. Leitura não pede confirmação.
+            - list_colmeia_history: cole as linhas do JSON na ordem recebida (mais antigas primeiro;
+              data só, sem hora; nota já vem entre parênteses). Sem timestamps crus nem ids.
             - create_colmeia: cadastro de colmeia nova — species (nome comum) obrigatório; status padrão
               desenvolvendo. Prefira pedir o código. Com código, cadastre no mesmo turno. Sem código,
               pergunte se quer cadastrar sem código; só então chame de novo com confirmed=true e
               code=null. startDate só se o usuário informar (senão omita; o servidor usa agora).
-              Na resposta, repita só o JSON da ferramenta: se code for null diga sem código;
-              nunca invente código.
+              Na resposta, repita só o JSON da ferramenta: inclua speciesScientificName junto ao nome
+              comum; se code for null diga sem código; nunca invente código.
             - update_colmeia: visita. Prefira a colmeia ativa e grave no mesmo turno, inclusive perdida
               ou vendida. Não descreva o histórico de mesmo status como confirmação. Se a única colmeia
               já estiver perdida ou vendida, confirme uma vez e então grave. Não use create_colmeia
@@ -169,9 +170,9 @@ class OpenAiConversationAdapter(
 
             Regras de phrasing:
             - Restate apenas o que as ferramentas devolveram.
-            - Sempre que a resposta mencionar uma espécie (count, lista ou zero), inclua o nome
-              científico junto ao nome comum (speciesScientificName / scientificName do JSON).
-              Respostas só de status não inventam espécie.
+            - Sempre que a resposta mencionar uma espécie (count, cadastro, detalhar, lista ou zero),
+              inclua o nome científico junto ao nome comum (speciesScientificName / scientificName do JSON)
+              quando a ferramenta o devolver. Respostas só de status não inventam espécie.
             - Se total for 0, ou se a ferramenta devolver erro (ex. unknown_species), nomeie
   cada restrição ativa do JSON (species, speciesScientificName, status,
   excludedStatusLabel) ou diga que o nome era inválido e ofereça o vocabulário de novo.

@@ -228,7 +228,7 @@ class ChatToolExecutorTest {
     }
 
     @Test
-    fun `detail_colmeia returns code species status and last visit without an id`() {
+    fun `detail_colmeia returns code species scientific name status and last visit without an id`() {
         detail.result = ColmeiaDetail(
             code = 7,
             speciesCommonName = "Jataí",
@@ -251,8 +251,9 @@ class ChatToolExecutorTest {
         val json = objectMapper.readTree(result.contentJson)
         assertEquals(7, json.path("code").asInt())
         assertEquals("Jataí", json.path("species").asText())
+        assertEquals("Tetragonisca angustula", json.path("speciesScientificName").asText())
         assertEquals("estavel", json.path("status").asText())
-        assertEquals("01/10/2026 09:00", json.path("lastVisit").path("date").asText())
+        assertEquals("2026-10-01", json.path("lastVisit").path("date").asText())
         assertTrue(json.path("id").isMissingNode)
         assertEquals(DetailColmeiaQuery(userId = 42L, colmeiaId = 100L), detail.lastQuery)
     }
@@ -315,6 +316,47 @@ class ChatToolExecutorTest {
         assertEquals(7, json.path("colmeia").path("code").asInt())
         assertEquals("Jataí", json.path("colmeia").path("species").asText())
         assertEquals("Tetragonisca angustula", json.path("colmeia").path("speciesScientificName").asText())
+    }
+
+    @Test
+    fun `create_colmeia includes scientific name for mandacaia and tubuna`() {
+        create.result = SAMPLE.copy(
+            speciesId = 4L,
+            speciesAbbreviation = "MQ",
+            speciesCommonName = "Mandaçaia",
+            code = 41,
+        )
+        val mandacaia = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_mq",
+                name = ChatToolNames.CREATE_COLMEIA,
+                argumentsJson = """{"species":"Mandaçaia","status":"desenvolvendo","code":41}""",
+            ),
+        )
+        assertEquals(
+            "Melipona quadrifasciata",
+            objectMapper.readTree(mandacaia.contentJson).path("colmeia").path("speciesScientificName").asText(),
+        )
+
+        create.result = SAMPLE.copy(
+            speciesId = 8L,
+            speciesAbbreviation = "TB",
+            speciesCommonName = "Tubuna",
+            code = 81,
+        )
+        val tubuna = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_tb",
+                name = ChatToolNames.CREATE_COLMEIA,
+                argumentsJson = """{"species":"Tubuna","status":"desenvolvendo","code":81}""",
+            ),
+        )
+        assertEquals(
+            "Scaptotrigona bipunctata",
+            objectMapper.readTree(tubuna.contentJson).path("colmeia").path("speciesScientificName").asText(),
+        )
     }
 
     @Test
@@ -451,12 +493,50 @@ class ChatToolExecutorTest {
         assertEquals(7, json.path("code").asInt())
         assertEquals(1, json.path("count").asInt())
         val visit = json.path("visits").path(0)
-        assertEquals("01/10/2026 09:00", visit.path("date").asText())
-        assertEquals("01/10/2026 09:00 — estavel\nnota: ok", json.path("lines").path(0).asText())
+        assertEquals("2026-10-01", visit.path("date").asText())
+        assertEquals("2026-10-01 · estavel (ok)", json.path("lines").path(0).asText())
         assertEquals("estavel", visit.path("status").asText())
         assertEquals("ok", visit.path("note").asText())
         assertTrue(visit.path("source").isMissingNode)
         assertTrue(visit.path("visitedAt").isMissingNode)
+    }
+
+    @Test
+    fun `list_colmeia_history presents last N older first with date-only note shape`() {
+        listHistory.items = listOf(
+            ColmeiaStatusHistoryEntry(
+                recordedAt = Instant.parse("2026-10-13T18:00:00Z"),
+                statusName = "estavel",
+                note = "entrada limpa",
+            ),
+            ColmeiaStatusHistoryEntry(
+                recordedAt = Instant.parse("2026-10-10T12:00:00Z"),
+                statusName = "recuperando",
+                note = null,
+            ),
+            ColmeiaStatusHistoryEntry(
+                recordedAt = Instant.parse("2026-10-01T12:00:00Z"),
+                statusName = "desenvolvendo",
+                note = "cadastro",
+            ),
+        )
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_hist_order",
+                name = ChatToolNames.LIST_COLMEIA_HISTORY,
+                argumentsJson = """{"code":7,"limit":10}""",
+            ),
+        )
+
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals(3, json.path("count").asInt())
+        assertEquals("2026-10-01 · desenvolvendo (cadastro)", json.path("lines").path(0).asText())
+        assertEquals("2026-10-10 · recuperando", json.path("lines").path(1).asText())
+        assertEquals("2026-10-13 · estavel (entrada limpa)", json.path("lines").path(2).asText())
+        assertEquals("2026-10-01", json.path("visits").path(0).path("date").asText())
+        assertEquals("2026-10-13", json.path("visits").path(2).path("date").asText())
+        assertTrue(!json.path("lines").path(2).asText().contains("nota:"))
     }
 
     @Test
@@ -513,6 +593,7 @@ class ChatToolExecutorTest {
 
         val historyDef = executor.definitions().first { it.name == ChatToolNames.LIST_COLMEIA_HISTORY }
         assertTrue(historyDef.description.contains("histórico", ignoreCase = true))
+        assertTrue(historyDef.description.contains("older first", ignoreCase = true))
         val historyProps = historyDef.parametersJsonSchema["properties"] as Map<*, *>
         assertTrue(historyProps.containsKey("code"))
         assertTrue(historyProps.containsKey("limit"))
@@ -629,8 +710,10 @@ class ChatToolExecutorTest {
             species = listOf(
                 SpeciesRef(1, "JT", "Jataí", "Tetragonisca angustula"),
                 SpeciesRef(2, "CN", "Canudo", "Scaptotrigona depilis"),
+                SpeciesRef(4, "MQ", "Mandaçaia", "Melipona quadrifasciata"),
                 SpeciesRef(6, "MD", "Manduri", "Melipona marginata"),
                 SpeciesRef(7, "MT", "Manduri", "Melipona torrida"),
+                SpeciesRef(8, "TB", "Tubuna", "Scaptotrigona bipunctata"),
             ),
             statuses = listOf(
                 StatusRef(1, "desenvolvendo"),
