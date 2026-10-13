@@ -258,24 +258,63 @@ class ChatToolExecutorTest {
     }
 
     @Test
-    fun `create_colmeia maps name args to command ids`() {
+    fun `create_colmeia without code requires confirmation`() {
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_c0",
+                name = ChatToolNames.CREATE_COLMEIA,
+                argumentsJson = """{"species":"Jataí","status":"estavel"}""",
+            ),
+        )
+        assertEquals("confirmation_required", objectMapper.readTree(result.contentJson).path("error").asText())
+        assertNull(create.lastCommand)
+    }
+
+    @Test
+    fun `create_colmeia with confirmed null code creates and exposes null code`() {
+        create.result = SAMPLE.copy(code = null)
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_c_null",
+                name = ChatToolNames.CREATE_COLMEIA,
+                argumentsJson = """{"species":"Jataí","status":"estavel","confirmed":true}""",
+            ),
+        )
+
+        assertEquals(
+            CreateColmeiaCommand(userId = 42L, speciesId = 1L, statusId = 3L, code = null),
+            create.lastCommand,
+        )
+        val json = objectMapper.readTree(result.contentJson)
+        assertTrue(json.path("colmeia").path("code").isNull)
+        assertEquals("Jataí", json.path("colmeia").path("species").asText())
+        assertEquals("Tetragonisca angustula", json.path("colmeia").path("speciesScientificName").asText())
+        assertEquals("estavel", json.path("colmeia").path("status").asText())
+    }
+
+    @Test
+    fun `create_colmeia with code creates immediately`() {
         create.result = SAMPLE
         val result = executor.execute(
             userId = 42L,
             call = AssistantToolCall(
                 id = "call_c",
                 name = ChatToolNames.CREATE_COLMEIA,
-                argumentsJson = """{"species":"Jataí","status":"estavel"}""",
+                argumentsJson = """{"species":"Jataí","status":"estavel","code":7}""",
             ),
         )
 
         assertEquals(
-            CreateColmeiaCommand(userId = 42L, speciesId = 1L, statusId = 3L),
+            CreateColmeiaCommand(userId = 42L, speciesId = 1L, statusId = 3L, code = 7),
             create.lastCommand,
         )
         val json = objectMapper.readTree(result.contentJson)
         assertTrue(json.path("colmeia").path("id").isMissingNode)
+        assertEquals(7, json.path("colmeia").path("code").asInt())
         assertEquals("Jataí", json.path("colmeia").path("species").asText())
+        assertEquals("Tetragonisca angustula", json.path("colmeia").path("speciesScientificName").asText())
     }
 
     @Test
@@ -496,7 +535,21 @@ class ChatToolExecutorTest {
 
         val deleteDef = executor.definitions().first { it.name == ChatToolNames.DELETE_COLMEIA }
         assertTrue(deleteDef.description.contains("perdida", ignoreCase = true))
+        assertTrue(deleteDef.description.contains("Do not redirect excluir", ignoreCase = true))
         assertTrue(!deleteDef.description.contains("registry mistakes", ignoreCase = true))
+    }
+
+    @Test
+    fun `create_colmeia definition prefers code and requires confirm for null code`() {
+        val createDef = executor.definitions().first { it.name == ChatToolNames.CREATE_COLMEIA }
+        assertTrue(createDef.description.contains("Prefer asking for a código") || createDef.description.contains("código"))
+        assertTrue(createDef.description.contains("confirmed=true"))
+        assertTrue(createDef.description.contains("sem código"))
+        assertTrue(createDef.description.contains("never invent", ignoreCase = true))
+        val props = createDef.parametersJsonSchema["properties"] as Map<*, *>
+        assertTrue(props.containsKey("code"))
+        assertTrue(props.containsKey("confirmed"))
+        assertTrue(props.containsKey("startDate"))
     }
 
     private class RecordingCount(var result: ColmeiaCount) : CountColmeiasUseCase {

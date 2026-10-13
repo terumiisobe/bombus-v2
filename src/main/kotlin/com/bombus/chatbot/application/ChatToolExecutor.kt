@@ -231,6 +231,13 @@ class ChatToolExecutor(
             is ChatVocabularyResolver.SpeciesResolution.Ambiguous ->
                 return ambiguousSpeciesJson(resolved.input, resolved.matches)
         }
+        val code = args.optionalInt("code")
+        if (code == null && !args.path("confirmed").asBoolean(false)) {
+            return errorJson(
+                "confirmation_required",
+                "Código não informado. Confirme para cadastrar sem código.",
+            )
+        }
         val statusRaw = args.optionalString("status")
         val statusId = if (statusRaw == null) {
             null
@@ -249,11 +256,13 @@ class ChatToolExecutor(
                 userId = userId,
                 speciesId = species.id,
                 statusId = statusId,
-                code = args.optionalInt("code"),
+                code = code,
                 startDate = args.optionalInstant("startDate"),
             ),
         )
-        return objectMapper.writeValueAsString(mapOf("colmeia" to created.toCompactMap()))
+        return objectMapper.writeValueAsString(
+            mapOf("colmeia" to created.toCompactMap(species.scientificName)),
+        )
     }
 
     private fun executeUpdate(userId: Long, argumentsJson: String): String {
@@ -288,7 +297,10 @@ class ChatToolExecutor(
                 note = args.optionalString("note"),
             ),
         )
-        return objectMapper.writeValueAsString(mapOf("colmeia" to updated.toCompactMap()))
+        val scientificName = vocabulary.species.firstOrNull { it.id == updated.speciesId }?.scientificName
+        return objectMapper.writeValueAsString(
+            mapOf("colmeia" to updated.toCompactMap(scientificName)),
+        )
     }
 
     private fun executeDelete(userId: Long, argumentsJson: String): String {
@@ -338,9 +350,10 @@ class ChatToolExecutor(
         )
     }
 
-    private fun ColmeiaSummary.toCompactMap(): Map<String, Any?> = mapOf(
+    private fun ColmeiaSummary.toCompactMap(speciesScientificName: String?): Map<String, Any?> = mapOf(
         "code" to code,
         "species" to speciesCommonName,
+        "speciesScientificName" to speciesScientificName,
         "status" to statusName,
     )
 
@@ -514,9 +527,13 @@ class ChatToolExecutor(
         val CREATE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.CREATE_COLMEIA,
             description =
-                "Cadastro: register a hive for the linked customer. species (common name) required from " +
-                    "list_vocabulary. code and startDate only if the user provided them (otherwise null). " +
-                    "status defaults to desenvolvendo. Never pass numeric ids.",
+                "Cadastro: register a hive for the linked customer. Prefer asking for a código. " +
+                    "species (common name) required from list_vocabulary. When the user gives a code, create " +
+                    "in that turn. When code is omitted or null, do not create yet: ask once whether to " +
+                    "cadastrar sem código, then call again with confirmed=true and code=null. " +
+                    "startDate only if the user provided one (otherwise omit; server defaults to now). " +
+                    "status defaults to desenvolvendo. Restate only tool JSON fields — if code is null say " +
+                    "sem código; never invent a code. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -530,11 +547,16 @@ class ChatToolExecutor(
                     ),
                     "code" to mapOf(
                         "type" to listOf("integer", "null"),
-                        "description" to "Hive code if the user provided one; otherwise null",
+                        "description" to "Hive code if the user provided one; null only after confirmed sem código",
                     ),
                     "startDate" to mapOf(
                         "type" to listOf("string", "null"),
-                        "description" to "ISO-8601 instant if the user provided one; otherwise null",
+                        "description" to "ISO-8601 instant if the user provided one; otherwise omit",
+                    ),
+                    "confirmed" to mapOf(
+                        "type" to "boolean",
+                        "description" to
+                            "True only after the user confirmed cadastrar sem código (required when code is null)",
                     ),
                 ),
                 "required" to listOf("species"),

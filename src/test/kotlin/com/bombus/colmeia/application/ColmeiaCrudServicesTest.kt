@@ -29,17 +29,31 @@ class ColmeiaCrudServicesTest {
     private val properties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida"))
 
     @Test
-    fun `create defaults status to desenvolvendo and leaves code startDate null`() {
+    fun `create defaults status to desenvolvendo startDate to now and records actor`() {
         val port = FakeOwnedPort().apply { meliponarioIds = listOf(10L) }
         val service = createService(port)
 
         val created = service.create(CreateColmeiaCommand(userId = 1L, speciesId = 1L))
 
         assertNull(created.code)
-        assertNull(created.startDate)
+        assertEquals(now, created.startDate)
         assertEquals(STATUS_DESENVOLVENDO, created.statusId)
         assertEquals(10L, created.meliponarioId)
         assertEquals(1, port.inserts.size)
+        assertEquals(1L, port.lastRecordedByUserId)
+    }
+
+    @Test
+    fun `create keeps explicit startDate`() {
+        val port = FakeOwnedPort().apply { meliponarioIds = listOf(10L) }
+        val service = createService(port)
+        val explicit = Instant.parse("2026-01-15T08:00:00Z")
+
+        val created = service.create(
+            CreateColmeiaCommand(userId = 1L, speciesId = 1L, startDate = explicit),
+        )
+
+        assertEquals(explicit, created.startDate)
     }
 
     @Test
@@ -274,7 +288,7 @@ class ColmeiaCrudServicesTest {
         ColmeiaCodeAvailability(port, FakeStatusLookup, properties)
 
     private fun createService(port: FakeOwnedPort) =
-        CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup, codeAvailability(port))
+        CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup, codeAvailability(port), clock)
 
     private fun recordService(port: FakeOwnedPort) =
         RecordColmeiaStatusService(
@@ -295,6 +309,7 @@ class ColmeiaCrudServicesTest {
         val byId = mutableMapOf<Long, ColmeiaSummary>()
         val byCode = mutableMapOf<Int, List<ColmeiaSummary>>()
         val inserts = mutableListOf<ColmeiaSummary>()
+        var lastRecordedByUserId: Long? = null
         val appendedStatuses = mutableListOf<AppendColmeiaStatus>()
         val deletedIds = mutableListOf<Long>()
         private var seq = 200L
@@ -339,7 +354,9 @@ class ColmeiaCrudServicesTest {
             meliponarioId: Long,
             startDate: Instant?,
             initialStatusId: Long,
+            recordedByUserId: Long,
         ): ColmeiaSummary {
+            lastRecordedByUserId = recordedByUserId
             val summary = ColmeiaSummary(
                 id = ++seq,
                 code = code,

@@ -98,12 +98,16 @@ class OpenAiConversationAdapterTest {
             .contains("registrar visita")
             .contains("detalhar")
             .contains("excluir")
+            .contains("cadastrar sem código")
+            .contains("nunca invente código")
+            .contains("não insista")
             .doesNotContain("listar")
             .doesNotContain("soft disposition")
             .doesNotContain("erro de cadastro")
             .doesNotContain("list_colmeias")
             .doesNotContain("visitedAt")
             .doesNotContain("source")
+            .doesNotContain("última adicionada")
     }
 
     @Test
