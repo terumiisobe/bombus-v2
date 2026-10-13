@@ -165,6 +165,7 @@ class ChatToolExecutor(
         if (resolved is ResolveHive.Failed) return resolved.errorJson
         val hive = (resolved as ResolveHive.Ok).value
         val detail = detailColmeia.detail(DetailColmeiaQuery(userId = userId, colmeiaId = hive.colmeiaId))
+        val scientificName = scientificNameForCommonName(detail.speciesCommonName)
         val lastVisit = detail.lastVisit?.let { entry ->
             mapOf(
                 "date" to visitFormatter.formatDate(entry),
@@ -176,6 +177,7 @@ class ChatToolExecutor(
             mapOf(
                 "code" to detail.code,
                 "species" to detail.speciesCommonName,
+                "speciesScientificName" to scientificName,
                 "status" to detail.statusName,
                 "lastVisit" to lastVisit,
             ),
@@ -188,13 +190,15 @@ class ChatToolExecutor(
             ?: return errorJson("missing_code", "code is required")
         val resolved = resolveHive(userId, code, args.optionalString("status"))
         if (resolved is ResolveHive.Failed) return resolved.errorJson
-        val entries = listColmeiaHistory.list(
+        val entriesNewestFirst = listColmeiaHistory.list(
             ListColmeiaHistoryQuery(
                 userId = userId,
                 colmeiaId = (resolved as ResolveHive.Ok).value.colmeiaId,
                 limit = args.optionalInt("limit") ?: ListColmeiaHistoryQuery.DEFAULT_LIMIT,
             ),
         )
+        // Last N from the use case (newest first); present chronologically ascending for WhatsApp.
+        val entries = entriesNewestFirst.asReversed()
         val lines = if (entries.isEmpty()) {
             listOf(visitFormatter.emptyHistory(code))
         } else {
@@ -357,6 +361,14 @@ class ChatToolExecutor(
         "status" to statusName,
     )
 
+    /** Vocabulary scientific name when the common name uniquely matches one species. */
+    private fun scientificNameForCommonName(commonName: String): String? {
+        val matches = vocabularyUseCase.list().species.filter {
+            it.commonName.equals(commonName, ignoreCase = true)
+        }
+        return matches.singleOrNull()?.scientificName
+    }
+
     private sealed class ResolveOutcome<out T> {
         data class Ok<T>(val value: T) : ResolveOutcome<T>()
         data class Failed(val errorJson: String) : ResolveOutcome<Nothing>()
@@ -482,11 +494,11 @@ class ChatToolExecutor(
         val DETAIL_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.DETAIL_COLMEIA,
             description =
-                "Detalhar one hive: code, species common name, current status, and last visit. " +
-                    "The user gives a code; this tool resolves it to one hive. Prefer the active hive " +
-                    "when the code has one. Optional status selects the inactive hive that shares the " +
-                    "code with a live one. A read does not ask for confirmation. Never pass numeric ids. " +
-                    "Do not say listar.",
+                "Detalhar one hive: code, species common name, speciesScientificName when known, " +
+                    "current status, and last visit. The user gives a code; this tool resolves it to one hive. " +
+                    "Prefer the active hive when the code has one. Optional status selects the inactive hive " +
+                    "that shares the code with a live one. A read does not ask for confirmation. " +
+                    "Never pass numeric ids. Do not say listar.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -504,8 +516,9 @@ class ChatToolExecutor(
         val LIST_COLMEIA_HISTORY_DEF = ToolDefinition(
             name = ChatToolNames.LIST_COLMEIA_HISTORY,
             description =
-                "Last N field visits (histórico) for one hive by code (date, status, optional note). Newest first. " +
-                    "Prefer the active hive when the code has one. Paste the lines array. Never pass numeric ids.",
+                "Last N field visits (histórico) for one hive by code (date, status, optional note). " +
+                    "lines are chronological (older first). Prefer the active hive when the code has one. " +
+                    "Paste the lines array as returned. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -528,12 +541,13 @@ class ChatToolExecutor(
             name = ChatToolNames.CREATE_COLMEIA,
             description =
                 "Cadastro: register a hive for the linked customer. Prefer asking for a código. " +
-                    "species (common name) required from list_vocabulary. When the user gives a code, create " +
-                    "in that turn. When code is omitted or null, do not create yet: ask once whether to " +
-                    "cadastrar sem código, then call again with confirmed=true and code=null. " +
-                    "startDate only if the user provided one (otherwise omit; server defaults to now). " +
-                    "status defaults to desenvolvendo. Restate only tool JSON fields — if code is null say " +
-                    "sem código; never invent a code. Never pass numeric ids.",
+                    "species (common name) required from list_vocabulary. Result includes " +
+                    "speciesScientificName when known — restate it with the common name. When the user " +
+                    "gives a code, create in that turn. When code is omitted or null, do not create yet: " +
+                    "ask once whether to cadastrar sem código, then call again with confirmed=true and " +
+                    "code=null. startDate only if the user provided one (otherwise omit; server defaults " +
+                    "to now). status defaults to desenvolvendo. Restate only tool JSON fields — if code " +
+                    "is null say sem código; never invent a code. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
