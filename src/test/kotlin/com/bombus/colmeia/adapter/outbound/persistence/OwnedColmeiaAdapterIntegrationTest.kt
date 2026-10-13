@@ -192,6 +192,40 @@ class OwnedColmeiaAdapterIntegrationTest {
     }
 
     @Test
+    fun `findByIdForOwner returns the member hive and hides another users id`() {
+        insertUsuario(MEMBER, "m@x.test")
+        addMember(MEL, MEMBER)
+        insertUsuario(OTHER, "p@x.test")
+
+        val hive = adapter.insert(
+            code = 21,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = null,
+            initialStatusId = desenvolvendoId,
+        )
+        val newest = Instant.now().plus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS)
+        adapter.appendStatus(
+            AppendColmeiaStatus(
+                colmeiaId = hive.id,
+                statusId = perdidaId,
+                recordedAt = newest,
+                note = "sumiu",
+            ),
+        )
+
+        val loaded = adapter.findByIdForOwner(MEMBER, hive.id)
+        assertThat(loaded).isNotNull
+        assertThat(loaded!!.code).isEqualTo(21)
+        assertThat(loaded.speciesCommonName).isNotBlank
+        assertThat(loaded.statusName).isEqualTo("perdida")
+        val lastVisit = adapter.listStatusHistory(MEMBER, hive.id, limit = 1).single()
+        assertThat(lastVisit.note).isEqualTo("sumiu")
+        assertThat(lastVisit.recordedAt).isEqualTo(newest)
+        assertThat(adapter.findByIdForOwner(OTHER, hive.id)).isNull()
+    }
+
+    @Test
     fun `appendStatus stores actor and note and updates current status`() {
         val created = adapter.insert(
             code = 13,

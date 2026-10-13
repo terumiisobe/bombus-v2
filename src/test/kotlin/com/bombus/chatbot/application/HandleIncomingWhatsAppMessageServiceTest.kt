@@ -23,8 +23,12 @@ import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryQuery
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
-import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
-import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
+import com.bombus.colmeia.application.port.inbound.DetailColmeiaQuery
+import com.bombus.colmeia.application.port.inbound.DetailColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.ResolveColmeiaIdUseCase
+import com.bombus.colmeia.application.port.inbound.ResolveColmeiaQuery
+import com.bombus.colmeia.application.port.inbound.ResolvedColmeia
+import com.bombus.colmeia.domain.ColmeiaDetail
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.DeletedColmeia
@@ -248,7 +252,8 @@ class HandleIncomingWhatsAppMessageServiceTest {
         val toolExecutor = ChatToolExecutor(
             countColmeias = count,
             vocabularyUseCase = FakeVocabulary,
-            listOwnedColmeias = NoopListOwned,
+            resolveColmeiaId = NoopResolve,
+            detailColmeia = NoopDetail,
             listColmeiaHistory = NoopListHistory,
             createColmeia = NoopCreate,
             recordColmeiaStatus = NoopRecordStatus,
@@ -315,8 +320,14 @@ class HandleIncomingWhatsAppMessageServiceTest {
         )
     }
 
-    private object NoopListOwned : ListOwnedColmeiasUseCase {
-        override fun list(query: ListOwnedColmeiasQuery): List<ColmeiaSummary> = emptyList()
+    private object NoopResolve : ResolveColmeiaIdUseCase {
+        override fun resolve(query: ResolveColmeiaQuery): ResolvedColmeia =
+            ResolvedColmeia(colmeiaId = 1L, inactive = false, statusName = "estavel")
+    }
+
+    private object NoopDetail : DetailColmeiaUseCase {
+        override fun detail(query: DetailColmeiaQuery): ColmeiaDetail =
+            ColmeiaDetail(code = 1, speciesCommonName = "Jataí", statusName = "estavel", lastVisit = null)
     }
 
     private object NoopListHistory : ListColmeiaHistoryUseCase {

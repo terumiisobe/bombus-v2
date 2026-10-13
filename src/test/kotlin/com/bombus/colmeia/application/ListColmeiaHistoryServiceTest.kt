@@ -13,106 +13,46 @@ import kotlin.test.assertFailsWith
 
 class ListColmeiaHistoryServiceTest {
 
-    private val properties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida"))
-
     @Test
-    fun `returns newest visits for the sole hive matching the code`() {
+    fun `returns newest visits for the hive id`() {
         val port = FakePort(
-            matches = listOf(summary(id = 10, status = "estavel")),
+            hive = summary(id = 10),
             history = listOf(
                 ColmeiaStatusHistoryEntry(Instant.parse("2026-10-01T10:00:00Z"), "estavel", "forte"),
                 ColmeiaStatusHistoryEntry(Instant.parse("2026-09-01T10:00:00Z"), "desenvolvendo", null),
             ),
         )
-        val service = ListColmeiaHistoryService(port, properties)
 
-        val result = service.list(ListColmeiaHistoryQuery(userId = OWNER, code = 7, limit = 5))
+        val result = ListColmeiaHistoryService(port)
+            .list(ListColmeiaHistoryQuery(userId = OWNER, colmeiaId = 10, limit = 5))
 
         assertEquals(2, result.size)
-        assertEquals("estavel", result[0].statusName)
         assertEquals("forte", result[0].note)
         assertEquals(10L, port.lastColmeiaId)
         assertEquals(5, port.lastLimit)
-        assertEquals(OWNER, port.lastUserId)
     }
 
     @Test
-    fun `prefers the active hive when code was reused after soft disposition`() {
-        val port = FakePort(
-            matches = listOf(
-                summary(id = 1, status = "vendida"),
-                summary(id = 2, status = "desenvolvendo"),
-            ),
-            history = listOf(
-                ColmeiaStatusHistoryEntry(Instant.parse("2026-10-02T00:00:00Z"), "desenvolvendo", null),
-            ),
-        )
-
-        val result = ListColmeiaHistoryService(port, properties)
-            .list(ListColmeiaHistoryQuery(userId = OWNER, code = 7))
-
-        assertEquals(1, result.size)
-        assertEquals(2L, port.lastColmeiaId)
-    }
-
-    @Test
-    fun `reads history for a sole soft-disposed hive`() {
-        val port = FakePort(
-            matches = listOf(summary(id = 9, status = "perdida")),
-            history = listOf(
-                ColmeiaStatusHistoryEntry(Instant.parse("2026-08-01T00:00:00Z"), "perdida", "sumiu"),
-            ),
-        )
-
-        val result = ListColmeiaHistoryService(port, properties)
-            .list(ListColmeiaHistoryQuery(userId = OWNER, code = 7))
-
-        assertEquals(9L, port.lastColmeiaId)
-        assertEquals("perdida", result.single().statusName)
-    }
-
-    @Test
-    fun `throws not found when code matches nothing accessible`() {
-        val service = ListColmeiaHistoryService(FakePort(matches = emptyList()), properties)
-
+    fun `throws not found when the id is not accessible`() {
         assertFailsWith<ColmeiaCommandError.ColmeiaNotFound> {
-            service.list(ListColmeiaHistoryQuery(userId = OWNER, code = 99))
-        }
-    }
-
-    @Test
-    fun `throws ambiguous when multiple active hives share the code`() {
-        val service = ListColmeiaHistoryService(
-            FakePort(
-                matches = listOf(
-                    summary(id = 1, status = "estavel"),
-                    summary(id = 2, status = "desenvolvendo"),
-                ),
-            ),
-            properties,
-        )
-
-        assertFailsWith<ColmeiaCommandError.AmbiguousCode> {
-            service.list(ListColmeiaHistoryQuery(userId = OWNER, code = 7))
+            ListColmeiaHistoryService(FakePort(hive = null))
+                .list(ListColmeiaHistoryQuery(userId = OWNER, colmeiaId = 99))
         }
     }
 
     @Test
     fun `rejects limit outside 1 to 50`() {
-        val service = ListColmeiaHistoryService(
-            FakePort(matches = listOf(summary(id = 1, status = "estavel"))),
-            properties,
-        )
+        val service = ListColmeiaHistoryService(FakePort(hive = summary(id = 1)))
 
         assertFailsWith<ColmeiaCommandError.InvalidLimit> {
-            service.list(ListColmeiaHistoryQuery(userId = OWNER, code = 7, limit = 0))
+            service.list(ListColmeiaHistoryQuery(userId = OWNER, colmeiaId = 1, limit = 0))
         }
         assertFailsWith<ColmeiaCommandError.InvalidLimit> {
-            service.list(ListColmeiaHistoryQuery(userId = OWNER, code = 7, limit = 51))
+            service.list(ListColmeiaHistoryQuery(userId = OWNER, colmeiaId = 1, limit = 51))
         }
     }
 
-    private fun summary(id: Long, status: String) = ColmeiaSummary(
+    private fun summary(id: Long) = ColmeiaSummary(
         id = id,
         code = 7,
         speciesId = 1L,
@@ -120,24 +60,23 @@ class ListColmeiaHistoryServiceTest {
         speciesCommonName = "Jataí",
         meliponarioId = 10L,
         startDate = null,
-        statusId = 1L,
-        statusName = status,
+        statusId = 3L,
+        statusName = "estavel",
     )
 
     private class FakePort(
-        private val matches: List<ColmeiaSummary>,
+        private val hive: ColmeiaSummary?,
         private val history: List<ColmeiaStatusHistoryEntry> = emptyList(),
     ) : OwnedColmeiaPort {
-        var lastUserId: Long? = null
         var lastColmeiaId: Long? = null
         var lastLimit: Int? = null
 
         override fun listMeliponarioIdsByOwner(userId: Long) = emptyList<Long>()
         override fun listByOwner(userId: Long, excludeStatusIds: Collection<Long>, limit: Int, offset: Int) =
             emptyList<ColmeiaSummary>()
-        override fun findByCodeForOwner(userId: Long, code: Int) = matches
+        override fun findByCodeForOwner(userId: Long, code: Int) = emptyList<ColmeiaSummary>()
+        override fun findByIdForOwner(userId: Long, colmeiaId: Long) = hive?.takeIf { it.id == colmeiaId }
         override fun listStatusHistory(userId: Long, colmeiaId: Long, limit: Int): List<ColmeiaStatusHistoryEntry> {
-            lastUserId = userId
             lastColmeiaId = colmeiaId
             lastLimit = limit
             return history.take(limit)

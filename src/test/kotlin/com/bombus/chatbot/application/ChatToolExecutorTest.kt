@@ -12,8 +12,12 @@ import com.bombus.colmeia.application.port.inbound.DeletedColmeia
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryQuery
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
-import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
-import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
+import com.bombus.colmeia.application.port.inbound.DetailColmeiaQuery
+import com.bombus.colmeia.application.port.inbound.DetailColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.ResolveColmeiaIdUseCase
+import com.bombus.colmeia.application.port.inbound.ResolveColmeiaQuery
+import com.bombus.colmeia.application.port.inbound.ResolvedColmeia
+import com.bombus.colmeia.domain.ColmeiaDetail
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
 import com.bombus.colmeia.application.ColmeiaCountProperties
@@ -21,7 +25,6 @@ import com.bombus.colmeia.domain.ColmeiaCount
 import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.ColmeiaVocabulary
-import com.bombus.colmeia.domain.SpeciesCount
 import com.bombus.colmeia.domain.SpeciesRef
 import com.bombus.colmeia.domain.StatusRef
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
@@ -35,7 +38,8 @@ class ChatToolExecutorTest {
 
     private val objectMapper = jacksonObjectMapper()
     private val count = RecordingCount(ColmeiaCount(total = 0))
-    private val listOwned = RecordingList()
+    private val resolve = RecordingResolve()
+    private val detail = RecordingDetail()
     private val listHistory = RecordingHistory()
     private val create = RecordingCreate()
     private val update = RecordingUpdate()
@@ -43,7 +47,8 @@ class ChatToolExecutorTest {
     private val executor = ChatToolExecutor(
         countColmeias = count,
         vocabularyUseCase = FakeVocabulary,
-        listOwnedColmeias = listOwned,
+        resolveColmeiaId = resolve,
+        detailColmeia = detail,
         listColmeiaHistory = listHistory,
         createColmeia = create,
         recordColmeiaStatus = update,
@@ -223,50 +228,33 @@ class ChatToolExecutorTest {
     }
 
     @Test
-    fun `list_colmeias returns compact items without internal id`() {
-        count.result = ColmeiaCount(total = 1)
-        listOwned.items = listOf(SAMPLE)
+    fun `detail_colmeia returns code species status and last visit without an id`() {
+        detail.result = ColmeiaDetail(
+            code = 7,
+            speciesCommonName = "Jataí",
+            statusName = "estavel",
+            lastVisit = ColmeiaStatusHistoryEntry(
+                recordedAt = Instant.parse("2026-10-01T12:00:00Z"),
+                statusName = "estavel",
+                note = "ok",
+            ),
+        )
         val result = executor.execute(
             userId = 42L,
             call = AssistantToolCall(
                 id = "call_l",
-                name = ChatToolNames.LIST_COLMEIAS,
-                argumentsJson = """{"limit":5}""",
+                name = ChatToolNames.DETAIL_COLMEIA,
+                argumentsJson = """{"code":7}""",
             ),
         )
 
         val json = objectMapper.readTree(result.contentJson)
-        assertEquals("list", json.path("mode").asText())
-        assertEquals(1, json.path("count").asInt())
-        assertEquals(7, json.path("items").path(0).path("code").asInt())
-        assertEquals("Jataí", json.path("items").path(0).path("species").asText())
-        assertTrue(json.path("items").path(0).path("id").isMissingNode)
-        assertEquals(
-            ListOwnedColmeiasQuery(userId = 42L, limit = 5),
-            listOwned.lastQuery,
-        )
-    }
-
-    @Test
-    fun `list_colmeias returns species count when more than 10 hives`() {
-        count.result = ColmeiaCount(
-            total = 11,
-            perSpecies = listOf(SpeciesCount(1, "JT", "Jataí", 11)),
-        )
-        val result = executor.execute(
-            userId = 42L,
-            call = AssistantToolCall(
-                id = "call_lc",
-                name = ChatToolNames.LIST_COLMEIAS,
-                argumentsJson = "{}",
-            ),
-        )
-
-        val json = objectMapper.readTree(result.contentJson)
-        assertEquals("species_count", json.path("mode").asText())
-        assertEquals(11, json.path("total").asInt())
-        assertEquals("Jataí", json.path("perSpecies").path(0).path("commonName").asText())
-        assertEquals(null, listOwned.lastQuery)
+        assertEquals(7, json.path("code").asInt())
+        assertEquals("Jataí", json.path("species").asText())
+        assertEquals("estavel", json.path("status").asText())
+        assertEquals("01/10/2026 09:00", json.path("lastVisit").path("date").asText())
+        assertTrue(json.path("id").isMissingNode)
+        assertEquals(DetailColmeiaQuery(userId = 42L, colmeiaId = 100L), detail.lastQuery)
     }
 
     @Test
@@ -303,7 +291,7 @@ class ChatToolExecutorTest {
         )
 
         assertEquals(
-            RecordColmeiaStatusCommand(userId = 42L, code = 7, statusId = 1L, note = null),
+            RecordColmeiaStatusCommand(userId = 42L, colmeiaId = 100L, statusId = 1L, note = null),
             update.lastCommand,
         )
         val json = objectMapper.readTree(result.contentJson)
@@ -323,7 +311,7 @@ class ChatToolExecutorTest {
             ),
         )
         assertEquals(
-            RecordColmeiaStatusCommand(userId = 42L, code = 7, statusId = 3L, note = "ainda fraca"),
+            RecordColmeiaStatusCommand(userId = 42L, colmeiaId = 100L, statusId = 3L, note = "ainda fraca"),
             update.lastCommand,
         )
 
@@ -336,7 +324,7 @@ class ChatToolExecutorTest {
             ),
         )
         assertEquals(
-            RecordColmeiaStatusCommand(userId = 42L, code = 7, statusId = 3L, note = null),
+            RecordColmeiaStatusCommand(userId = 42L, colmeiaId = 100L, statusId = 3L, note = null),
             update.lastCommand,
         )
     }
@@ -363,10 +351,39 @@ class ChatToolExecutorTest {
             ),
         )
 
-        assertEquals(DeleteColmeiaCommand(userId = 42L, code = 7), delete.lastCommand)
+        assertEquals(DeleteColmeiaCommand(userId = 42L, colmeiaId = 100L), delete.lastCommand)
         val json = objectMapper.readTree(result.contentJson)
         assertTrue(json.path("deleted").asBoolean())
         assertEquals(7, json.path("code").asInt())
+    }
+
+    @Test
+    fun `update of an inactive hive asks once before recording`() {
+        resolve.next = ResolvedColmeia(colmeiaId = 100L, inactive = true, statusName = "vendida")
+        val asked = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_ask",
+                name = ChatToolNames.UPDATE_COLMEIA,
+                argumentsJson = """{"code":12345,"status":"desenvolvendo"}""",
+            ),
+        )
+        val askedJson = objectMapper.readTree(asked.contentJson)
+        assertEquals("confirmation_required", askedJson.path("error").asText())
+        assertTrue(askedJson.path("message").asText().contains("vendida"))
+        assertNull(update.lastCommand)
+
+        update.result = SAMPLE.copy(statusId = 1L, statusName = "desenvolvendo")
+        executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_yes",
+                name = ChatToolNames.UPDATE_COLMEIA,
+                argumentsJson = """{"code":12345,"status":"desenvolvendo","confirmed":true}""",
+            ),
+        )
+        assertEquals(100L, update.lastCommand?.colmeiaId)
+        assertEquals(1L, update.lastCommand?.statusId)
     }
 
     @Test
@@ -388,14 +405,15 @@ class ChatToolExecutorTest {
         )
 
         assertEquals(
-            ListColmeiaHistoryQuery(userId = 42L, code = 7, limit = 5),
+            ListColmeiaHistoryQuery(userId = 42L, colmeiaId = 100L, limit = 5),
             listHistory.lastQuery,
         )
         val json = objectMapper.readTree(result.contentJson)
         assertEquals(7, json.path("code").asInt())
         assertEquals(1, json.path("count").asInt())
         val visit = json.path("visits").path(0)
-        assertEquals("2026-10-01T12:00:00Z", visit.path("date").asText())
+        assertEquals("01/10/2026 09:00", visit.path("date").asText())
+        assertEquals("01/10/2026 09:00 — estavel\nnota: ok", json.path("lines").path(0).asText())
         assertEquals("estavel", visit.path("status").asText())
         assertEquals("ok", visit.path("note").asText())
         assertTrue(visit.path("source").isMissingNode)
@@ -414,7 +432,7 @@ class ChatToolExecutorTest {
             ),
         )
         assertEquals(
-            ListColmeiaHistoryQuery(userId = 1L, code = 3, limit = ListColmeiaHistoryQuery.DEFAULT_LIMIT),
+            ListColmeiaHistoryQuery(userId = 1L, colmeiaId = 100L, limit = ListColmeiaHistoryQuery.DEFAULT_LIMIT),
             listHistory.lastQuery,
         )
 
@@ -438,7 +456,7 @@ class ChatToolExecutorTest {
             listOf(
                 ChatToolNames.COUNT_COLMEIAS,
                 ChatToolNames.LIST_VOCABULARY,
-                ChatToolNames.LIST_COLMEIAS,
+                ChatToolNames.DETAIL_COLMEIA,
                 ChatToolNames.LIST_COLMEIA_HISTORY,
                 ChatToolNames.CREATE_COLMEIA,
                 ChatToolNames.UPDATE_COLMEIA,
@@ -466,20 +484,19 @@ class ChatToolExecutorTest {
     @Test
     fun `update_colmeia definition is visita with optional note and no visitedAt`() {
         val updateDef = executor.definitions().first { it.name == ChatToolNames.UPDATE_COLMEIA }
-        assertTrue(updateDef.description.contains("Acompanhamento/visita", ignoreCase = true))
-        assertTrue(updateDef.description.contains("perdida", ignoreCase = true))
-        assertTrue(updateDef.description.contains("vendida", ignoreCase = true))
+        assertTrue(updateDef.description.contains("inactive", ignoreCase = true))
+        assertTrue(!updateDef.description.contains("same-status confirmations"))
+        assertTrue(!updateDef.description.contains("listar"))
         val props = updateDef.parametersJsonSchema["properties"] as Map<*, *>
         assertTrue(props.containsKey("code"))
         assertTrue(props.containsKey("status"))
         assertTrue(props.containsKey("note"))
+        assertTrue(props.containsKey("confirmed"))
         assertTrue(!props.containsKey("visitedAt"))
 
-        val createDef = executor.definitions().first { it.name == ChatToolNames.CREATE_COLMEIA }
-        assertTrue(createDef.description.contains("Cadastro", ignoreCase = true))
         val deleteDef = executor.definitions().first { it.name == ChatToolNames.DELETE_COLMEIA }
-        assertTrue(deleteDef.description.contains("Cadastro", ignoreCase = true))
         assertTrue(deleteDef.description.contains("perdida", ignoreCase = true))
+        assertTrue(!deleteDef.description.contains("registry mistakes", ignoreCase = true))
     }
 
     private class RecordingCount(var result: ColmeiaCount) : CountColmeiasUseCase {
@@ -492,14 +509,19 @@ class ChatToolExecutorTest {
         }
     }
 
-    private class RecordingList : ListOwnedColmeiasUseCase {
-        var items: List<ColmeiaSummary> = emptyList()
-        var lastQuery: ListOwnedColmeiasQuery? = null
+    private class RecordingResolve : ResolveColmeiaIdUseCase {
+        var next = ResolvedColmeia(colmeiaId = 100L, inactive = false, statusName = "desenvolvendo")
+        override fun resolve(query: ResolveColmeiaQuery): ResolvedColmeia = next
+    }
+
+    private class RecordingDetail : DetailColmeiaUseCase {
+        var result = ColmeiaDetail(code = 7, speciesCommonName = "Jataí", statusName = "estavel", lastVisit = null)
+        var lastQuery: DetailColmeiaQuery? = null
             private set
 
-        override fun list(query: ListOwnedColmeiasQuery): List<ColmeiaSummary> {
+        override fun detail(query: DetailColmeiaQuery): ColmeiaDetail {
             lastQuery = query
-            return items
+            return result
         }
     }
 

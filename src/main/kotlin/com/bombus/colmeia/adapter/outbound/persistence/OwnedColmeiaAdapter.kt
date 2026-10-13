@@ -53,6 +53,15 @@ class OwnedColmeiaAdapter(
             SUMMARY_MAPPER,
         )
 
+    override fun findByIdForOwner(userId: Long, colmeiaId: Long): ColmeiaSummary? =
+        jdbc.query(
+            FIND_BY_ID_SQL,
+            MapSqlParameterSource()
+                .addValue("userId", userId)
+                .addValue("colmeiaId", colmeiaId),
+            SUMMARY_MAPPER,
+        ).firstOrNull()
+
     override fun listStatusHistory(
         userId: Long,
         colmeiaId: Long,
@@ -210,6 +219,12 @@ class OwnedColmeiaAdapter(
             WHERE $ACCESSIBLE_COLMEIA
               AND c.code = :code
             ORDER BY c.id
+        """.trimIndent()
+
+        val FIND_BY_ID_SQL = """
+            $SUMMARY_SELECT
+            WHERE $ACCESSIBLE_COLMEIA
+              AND c.id = :colmeiaId
         """.trimIndent()
 
         val LIST_STATUS_HISTORY_SQL = """

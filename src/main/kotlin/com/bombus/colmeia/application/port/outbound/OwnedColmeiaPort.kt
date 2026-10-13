@@ -35,6 +35,8 @@ interface OwnedColmeiaPort {
         code: Int,
     ): List<ColmeiaSummary>
 
+    fun findByIdForOwner(userId: Long, colmeiaId: Long): ColmeiaSummary? = null
+
     /**
      * Latest [limit] historico rows for [colmeiaId], newest first
      * (`recorded_at` DESC, `id` DESC). Empty if the hive is not accessible to [userId].

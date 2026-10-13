@@ -98,14 +98,14 @@ class ColmeiaCrudServicesTest {
         }
         val service = deleteService(port)
 
-        val deleted = service.delete(DeleteColmeiaCommand(userId = 1L, code = 7))
+        val deleted = service.delete(DeleteColmeiaCommand(userId = 1L, colmeiaId = 100L))
         assertEquals(7, deleted.code)
         assertEquals("Jataí", deleted.speciesCommonName)
         assertTrue(port.deletedIds.contains(100L))
     }
 
     @Test
-    fun `delete ignores vendida with the same code and deletes only the active hive`() {
+    fun `delete by id removes that hive even when a vendida sibling shares the code`() {
         val sold = SAMPLE.copy(id = 99L, statusId = STATUS_VENDIDA, statusName = "vendida")
         val active = SAMPLE.copy(id = 100L)
         val port = FakeOwnedPort().apply {
@@ -113,25 +113,23 @@ class ColmeiaCrudServicesTest {
             byId[99L] = sold
             byId[100L] = active
         }
-        val service = deleteService(port)
 
-        service.delete(DeleteColmeiaCommand(userId = 1L, code = 7))
+        deleteService(port).delete(DeleteColmeiaCommand(userId = 1L, colmeiaId = 100L))
 
         assertEquals(listOf(100L), port.deletedIds)
     }
 
     @Test
-    fun `delete of code that is only vendida is not found`() {
+    fun `delete of a vendida hive id succeeds`() {
         val sold = SAMPLE.copy(statusId = STATUS_VENDIDA, statusName = "vendida")
         val port = FakeOwnedPort().apply {
-            byCode[7] = listOf(sold)
             byId[100L] = sold
         }
 
-        assertFailsWith<ColmeiaCommandError.ColmeiaNotFound> {
-            deleteService(port).delete(DeleteColmeiaCommand(userId = 1L, code = 7))
-        }
-        assertTrue(port.deletedIds.isEmpty())
+        val deleted = deleteService(port).delete(DeleteColmeiaCommand(userId = 1L, colmeiaId = 100L))
+
+        assertEquals("vendida", deleted.statusName)
+        assertEquals(listOf(100L), port.deletedIds)
     }
 
     @Test
@@ -143,7 +141,7 @@ class ColmeiaCrudServicesTest {
         val service = recordService(port)
 
         val updated = service.record(
-            RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
+            RecordColmeiaStatusCommand(userId = 1L, colmeiaId = 100L, statusId = STATUS_ESTAVEL),
         )
 
         assertEquals(1L, updated.speciesId)
@@ -165,7 +163,7 @@ class ColmeiaCrudServicesTest {
         val updated = service.record(
             RecordColmeiaStatusCommand(
                 userId = 1L,
-                code = 7,
+                colmeiaId = 100L,
                 statusId = STATUS_DESENVOLVENDO,
                 note = "ainda fraca",
             ),
@@ -190,7 +188,7 @@ class ColmeiaCrudServicesTest {
         val service = recordService(port)
 
         val updated = service.record(
-            RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_PERDIDA),
+            RecordColmeiaStatusCommand(userId = 1L, colmeiaId = 100L, statusId = STATUS_PERDIDA),
         )
 
         assertEquals(STATUS_PERDIDA, updated.statusId)
@@ -206,7 +204,7 @@ class ColmeiaCrudServicesTest {
         val service = recordService(port)
 
         val updated = service.record(
-            RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_VENDIDA),
+            RecordColmeiaStatusCommand(userId = 1L, colmeiaId = 100L, statusId = STATUS_VENDIDA),
         )
 
         assertEquals(STATUS_VENDIDA, updated.statusId)
@@ -214,53 +212,41 @@ class ColmeiaCrudServicesTest {
     }
 
     @Test
-    fun `record of code that is only vendida is not found`() {
+    fun `record of a vendida hive id appends historico on that id`() {
         val sold = SAMPLE.copy(statusId = STATUS_VENDIDA, statusName = "vendida")
-        val port = FakeOwnedPort().apply {
-            byCode[7] = listOf(sold)
-            byId[100L] = sold
-        }
+        val port = FakeOwnedPort().apply { byId[100L] = sold }
 
-        assertFailsWith<ColmeiaCommandError.ColmeiaNotFound> {
-            recordService(port).record(
-                RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
-            )
-        }
-        assertTrue(port.appendedStatuses.isEmpty())
+        val updated = recordService(port).record(
+            RecordColmeiaStatusCommand(userId = 1L, colmeiaId = 100L, statusId = STATUS_ESTAVEL),
+        )
+
+        assertEquals(100L, port.appendedStatuses.single().colmeiaId)
+        assertEquals(STATUS_ESTAVEL, updated.statusId)
     }
 
     @Test
-    fun `record touches only the active hive when code was reused after vendida`() {
+    fun `record updates only the id it was given`() {
         val sold = SAMPLE.copy(id = 100L, statusId = STATUS_VENDIDA, statusName = "vendida")
         val active = SAMPLE.copy(id = 101L, statusId = STATUS_DESENVOLVENDO, statusName = "desenvolvendo")
         val port = FakeOwnedPort().apply {
-            byCode[7] = listOf(sold, active)
             byId[100L] = sold
             byId[101L] = active
         }
-        val service = recordService(port)
 
-        val updated = service.record(
-            RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL),
+        val updated = recordService(port).record(
+            RecordColmeiaStatusCommand(userId = 1L, colmeiaId = 101L, statusId = STATUS_ESTAVEL),
         )
 
         assertEquals(101L, updated.id)
-        assertEquals(STATUS_ESTAVEL, updated.statusId)
-        assertEquals(1, port.appendedStatuses.size)
         assertEquals(101L, port.appendedStatuses.single().colmeiaId)
-        assertEquals(STATUS_ESTAVEL, port.appendedStatuses.single().statusId)
-        assertEquals(1L, port.appendedStatuses.single().recordedByUserId)
     }
 
     @Test
-    fun `record by ambiguous active codes fails`() {
-        val port = FakeOwnedPort().apply {
-            byCode[7] = listOf(SAMPLE, SAMPLE.copy(id = 101L, meliponarioId = 11L))
-        }
-        val service = recordService(port)
-
-        assertFailsWith<ColmeiaCommandError.AmbiguousCode> {
-            service.record(RecordColmeiaStatusCommand(userId = 1L, code = 7, statusId = STATUS_ESTAVEL))
+    fun `record of an unknown id is not found`() {
+        assertFailsWith<ColmeiaCommandError.ColmeiaNotFound> {
+            recordService(FakeOwnedPort()).record(
+                RecordColmeiaStatusCommand(userId = 1L, colmeiaId = 100L, statusId = STATUS_ESTAVEL),
+            )
         }
     }
 
@@ -275,7 +261,7 @@ class ColmeiaCrudServicesTest {
             recordService(port).record(
                 RecordColmeiaStatusCommand(
                     userId = 1L,
-                    code = 7,
+                    colmeiaId = 100L,
                     statusId = STATUS_ESTAVEL,
                     note = "x".repeat(281),
                 ),
@@ -287,9 +273,6 @@ class ColmeiaCrudServicesTest {
     private fun codeAvailability(port: FakeOwnedPort) =
         ColmeiaCodeAvailability(port, FakeStatusLookup, properties)
 
-    private fun activeResolver(port: FakeOwnedPort) =
-        ColmeiaActiveCodeResolver(port, properties)
-
     private fun createService(port: FakeOwnedPort) =
         CreateColmeiaService(port, FakeVocabulary, FakeStatusLookup, codeAvailability(port))
 
@@ -298,13 +281,11 @@ class ColmeiaCrudServicesTest {
             port,
             FakeVocabulary,
             properties,
-            activeResolver(port),
             codeAvailability(port),
             clock,
         )
 
-    private fun deleteService(port: FakeOwnedPort) =
-        DeleteColmeiaService(port, activeResolver(port))
+    private fun deleteService(port: FakeOwnedPort) = DeleteColmeiaService(port)
 
     private class FakeOwnedPort : OwnedColmeiaPort {
         var meliponarioIds: List<Long> = emptyList()
@@ -332,6 +313,8 @@ class ColmeiaCrudServicesTest {
 
         override fun findByCodeForOwner(userId: Long, code: Int): List<ColmeiaSummary> =
             byCode[code].orEmpty()
+
+        override fun findByIdForOwner(userId: Long, colmeiaId: Long): ColmeiaSummary? = byId[colmeiaId]
 
         override fun listStatusHistory(
             userId: Long,

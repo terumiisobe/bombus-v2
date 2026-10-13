@@ -16,21 +16,19 @@ class RecordColmeiaStatusService(
     private val ownedColmeiaPort: OwnedColmeiaPort,
     private val vocabularyPort: ColmeiaVocabularyPort,
     private val properties: ColmeiaCountProperties,
-    private val activeCodeResolver: ColmeiaActiveCodeResolver,
     private val codeAvailability: ColmeiaCodeAvailability,
     private val clock: Clock,
 ) : RecordColmeiaStatusUseCase {
 
     @Transactional
     override fun record(command: RecordColmeiaStatusCommand): ColmeiaSummary {
-        val existing = activeCodeResolver.requireExactlyOneActive(command.userId, command.code)
+        val existing = ownedColmeiaPort.findByIdForOwner(command.userId, command.colmeiaId)
+            ?: throw ColmeiaCommandError.ColmeiaNotFound()
         val statusRef = vocabularyPort.listStatuses().find { it.id == command.statusId }
             ?: throw ColmeiaCommandError.UnknownStatus()
         val note = normalizeNote(command.note)
 
-        // Staying active: code must not be held by another active hive.
-        // Codes only on perdida/vendida do not block (soft uniqueness).
-        if (!properties.releasesCode(statusRef.name)) {
+        if (!properties.releasesCode(statusRef.name) && existing.code != null) {
             codeAvailability.assertAvailable(
                 meliponarioId = existing.meliponarioId,
                 code = existing.code,
