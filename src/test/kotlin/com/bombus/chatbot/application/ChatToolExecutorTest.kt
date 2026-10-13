@@ -604,7 +604,12 @@ class ChatToolExecutorTest {
     @Test
     fun `update_colmeia definition is visita with optional note and no visitedAt`() {
         val updateDef = executor.definitions().first { it.name == ChatToolNames.UPDATE_COLMEIA }
-        assertTrue(updateDef.description.contains("inactive", ignoreCase = true))
+        assertTrue(updateDef.description.contains("soft exit", ignoreCase = true))
+        assertTrue(updateDef.description.contains("never delete_colmeia", ignoreCase = true))
+        assertTrue(updateDef.description.contains("perdida or vendida", ignoreCase = true))
+        assertTrue(updateDef.description.contains("sole hive", ignoreCase = true))
+        assertTrue(updateDef.description.contains("without currentStatus", ignoreCase = true))
+        assertTrue(!updateDef.description.contains("Do not prefer this tool over delete"))
         assertTrue(!updateDef.description.contains("same-status confirmations"))
         assertTrue(!updateDef.description.contains("listar"))
         val props = updateDef.parametersJsonSchema["properties"] as Map<*, *>
@@ -613,14 +618,31 @@ class ChatToolExecutorTest {
         assertTrue(props.containsKey("note"))
         assertTrue(props.containsKey("confirmed"))
         assertTrue(!props.containsKey("visitedAt"))
+        val currentStatus = props["currentStatus"] as Map<*, *>
+        assertTrue(currentStatus["description"].toString().contains("Omit for a sole hive"))
 
         val deleteDef = executor.definitions().first { it.name == ChatToolNames.DELETE_COLMEIA }
-        assertTrue(deleteDef.description.contains("same flow", ignoreCase = true))
+        assertTrue(deleteDef.description.contains("excluir", ignoreCase = true))
+        assertTrue(deleteDef.description.contains("Never use this tool to mark perdida", ignoreCase = true))
+        assertTrue(deleteDef.description.contains("update_colmeia", ignoreCase = true))
+        assertTrue(deleteDef.description.contains("same delete flow", ignoreCase = true))
         assertTrue(deleteDef.description.contains("resolved hive id", ignoreCase = true))
         assertTrue(deleteDef.description.contains("first confirmation", ignoreCase = true))
+        assertTrue(deleteDef.description.contains("sole hive", ignoreCase = true))
         assertTrue(deleteDef.description.contains("Do not redirect excluir", ignoreCase = true))
         assertTrue(!deleteDef.description.contains("naming that status", ignoreCase = true))
         assertTrue(!deleteDef.description.contains("registry mistakes", ignoreCase = true))
+
+        val detailDef = executor.definitions().first { it.name == ChatToolNames.DETAIL_COLMEIA }
+        assertTrue(detailDef.description.contains("sole hive", ignoreCase = true))
+        assertTrue(detailDef.description.contains("without status", ignoreCase = true))
+        assertTrue(detailDef.description.contains("do not invent not-found", ignoreCase = true))
+        val detailStatus = (detailDef.parametersJsonSchema["properties"] as Map<*, *>)["status"] as Map<*, *>
+        assertTrue(detailStatus["description"].toString().contains("Omit for a sole hive"))
+
+        val countDef = executor.definitions().first { it.name == ChatToolNames.COUNT_COLMEIAS }
+        assertTrue(countDef.description.contains("not a list of codes", ignoreCase = true))
+        assertTrue(countDef.description.contains("Never invent names, hive rows", ignoreCase = true))
     }
 
     @Test

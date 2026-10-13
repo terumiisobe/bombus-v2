@@ -452,12 +452,13 @@ class ChatToolExecutor(
         val COUNT_COLMEIAS_DEF = ToolDefinition(
             name = ChatToolNames.COUNT_COLMEIAS,
             description =
-                "Count the customer's hives (colmeias). Optional species/status filters by vocabulary names " +
-                    "(common name or abbreviation for species; status name). A named status, including " +
-                    "vendida or perdida, counts only that status: total is that count, and the default " +
-                    "exclusion does not apply. Pass vendidas as vendida. Omit groupBy for a single-status " +
-                    "question. On unknown_status do not retry without the status. Never invent names or pass " +
-                    "numeric ids. Numbers and labels in the tool JSON are authoritative — restate them.",
+                "Count the customer's hives (colmeias). Returns totals only — not a list of codes. " +
+                    "Optional species/status filters by vocabulary names (common name or abbreviation for " +
+                    "species; status name). A named status, including vendida or perdida, counts only that " +
+                    "status: total is that count, and the default exclusion does not apply. Pass vendidas as " +
+                    "vendida. Omit groupBy for a single-status question. On unknown_status do not retry " +
+                    "without the status. Never invent names, hive rows, or numeric ids. Numbers and labels " +
+                    "in the tool JSON are authoritative — restate them.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -496,16 +497,20 @@ class ChatToolExecutor(
             description =
                 "Detalhar one hive: code, species common name, speciesScientificName when known, " +
                     "current status, and last visit. The user gives a code; this tool resolves it to one hive. " +
-                    "Prefer the active hive when the code has one. Optional status selects the inactive hive " +
-                    "that shares the code with a live one. A read does not ask for confirmation. " +
-                    "Never pass numeric ids. Do not say listar.",
+                    "Prefer the active hive when the code has one. A sole hive for the code — including " +
+                    "perdida or vendida — resolves without status; do not invent not-found for a sole " +
+                    "inactive. Optional status only disambiguates when an active hive and an inactive hive " +
+                    "share the code. A read does not ask for confirmation. Never pass numeric ids. " +
+                    "Do not say listar.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
                     "code" to mapOf("type" to "integer", "description" to "Hive code"),
                     "status" to mapOf(
                         "type" to listOf("string", "null"),
-                        "description" to "Current status name only when selecting the inactive hive that shares the code",
+                        "description" to
+                            "Omit for a sole hive (active or inactive). Pass only to select the inactive " +
+                            "sibling when an active hive shares the code",
                     ),
                 ),
                 "required" to listOf("code"),
@@ -518,6 +523,8 @@ class ChatToolExecutor(
             description =
                 "Last N field visits (histórico) for one hive by code (date, status, optional note). " +
                     "lines are chronological (older first). Prefer the active hive when the code has one. " +
+                    "A sole hive for the code — including perdida or vendida — resolves without status. " +
+                    "Optional status only disambiguates when active and inactive share the code. " +
                     "Paste the lines array as returned. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
@@ -525,7 +532,9 @@ class ChatToolExecutor(
                     "code" to mapOf("type" to "integer", "description" to "Hive code"),
                     "status" to mapOf(
                         "type" to listOf("string", "null"),
-                        "description" to "Current status name only when selecting the inactive hive that shares the code",
+                        "description" to
+                            "Omit for a sole hive (active or inactive). Pass only to select the inactive " +
+                            "sibling when an active hive shares the code",
                     ),
                     "limit" to mapOf(
                         "type" to listOf("integer", "null"),
@@ -581,13 +590,15 @@ class ChatToolExecutor(
         val UPDATE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.UPDATE_COLMEIA,
             description =
-                "Record a field visit on one hive. The user gives a code; the write uses the resolved hive id. " +
-                    "Prefer the active hive. A stated status on an active hive, including perdida or vendida, " +
-                    "is recorded in the same turn with no confirmation. When the resolved hive is already " +
+                "Record a field visit or soft exit on one hive. Always use this tool (never delete_colmeia) " +
+                    "when the user wants perdida or vendida / marcar / alterar status / saiu do plantel. " +
+                    "The user gives a code; the write uses the resolved hive id. Prefer the active hive. " +
+                    "A stated status on an active hive, including perdida or vendida, is recorded in the " +
+                    "same turn with no confirmation. A sole hive for the code — including already " +
+                    "perdida/vendida — resolves without currentStatus. When the resolved hive is already " +
                     "inactive, ask once naming that status and call again with confirmed=true. Historico is " +
-                    "appended by the use case, including when the status did not change; that is not a question. " +
-                    "Do not call create_colmeia for a status change. Do not prefer this tool over delete. " +
-                    "Never pass numeric ids.",
+                    "appended by the use case, including when the status did not change; that is not a " +
+                    "question. Do not call create_colmeia for a status change. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -604,7 +615,8 @@ class ChatToolExecutor(
                     "currentStatus" to mapOf(
                         "type" to listOf("string", "null"),
                         "description" to
-                            "Current status name only when the user means the inactive hive that shares the code with an active one",
+                            "Omit for a sole hive. Pass only when the user means the inactive sibling " +
+                            "that shares the code with an active one",
                     ),
                     "confirmed" to mapOf(
                         "type" to "boolean",
@@ -619,12 +631,15 @@ class ChatToolExecutor(
         val DELETE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.DELETE_COLMEIA,
             description =
-                "Permanently delete one hive (active or already perdida/vendida — same flow). Prefer the " +
-                    "active hive when the code is ambiguous. Ask once for confirmation, then call with " +
+                "Permanently erase one hive cadastro only when the user clearly says excluir / apagar / " +
+                    "deletar / remover cadastro (with confirmation). Never use this tool to mark perdida " +
+                    "or vendida — that is update_colmeia. Active or already perdida/vendida use the same " +
+                    "delete flow. Prefer the active hive when the code is ambiguous. A sole hive for the " +
+                    "code resolves without status. Ask once for confirmation, then call with " +
                     "confirmed=true; the write uses the resolved hive id. On that first confirmation " +
                     "turn in the conversation, mention perdida/vendida as an optional alternative; do " +
-                    "not keep re-suggesting soft exit. Optional status selects the inactive hive when " +
-                    "an active hive shares the code. Do not redirect excluir into perdida or vendida. " +
+                    "not keep re-suggesting soft exit. Optional status only selects the inactive sibling " +
+                    "when an active hive shares the code. Do not redirect excluir into perdida or vendida. " +
                     "Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
@@ -632,7 +647,9 @@ class ChatToolExecutor(
                     "code" to mapOf("type" to "integer", "description" to "Hive code to delete"),
                     "status" to mapOf(
                         "type" to listOf("string", "null"),
-                        "description" to "Current status name when deleting the inactive hive that shares the code",
+                        "description" to
+                            "Omit for a sole hive. Pass only when deleting the inactive sibling that " +
+                            "shares the code with an active one",
                     ),
                     "confirmed" to mapOf(
                         "type" to "boolean",
