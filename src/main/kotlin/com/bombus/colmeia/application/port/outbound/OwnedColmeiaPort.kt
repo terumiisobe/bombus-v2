@@ -1,5 +1,6 @@
 package com.bombus.colmeia.application.port.outbound
 
+import com.bombus.colmeia.domain.ColmeiaCountFilter
 import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import java.time.Instant
@@ -23,9 +24,13 @@ interface OwnedColmeiaPort {
     /** Ascending by id. The first element is the default target for create. */
     fun listMeliponarioIdsByOwner(userId: Long): List<Long>
 
+    /**
+     * Bounded membership-scoped sample. Same filter semantics as [ColmeiaCountPort.countByOwner]
+     * (species, include-status vs default exclusion). Ordered by code NULLS LAST, then id.
+     */
     fun listByOwner(
         userId: Long,
-        excludeStatusIds: Collection<Long>,
+        filter: ColmeiaCountFilter,
         limit: Int,
         offset: Int,
     ): List<ColmeiaSummary>

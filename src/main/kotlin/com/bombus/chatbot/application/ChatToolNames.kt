@@ -2,6 +2,7 @@ package com.bombus.chatbot.application
 
 object ChatToolNames {
     const val COUNT_COLMEIAS = "count_colmeias"
+    const val SAMPLE_COLMEIAS = "sample_colmeias"
     const val LIST_VOCABULARY = "list_vocabulary"
     const val DETAIL_COLMEIA = "detail_colmeia"
     const val LIST_COLMEIA_HISTORY = "list_colmeia_history"

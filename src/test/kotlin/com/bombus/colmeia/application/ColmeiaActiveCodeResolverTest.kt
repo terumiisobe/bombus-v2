@@ -63,7 +63,7 @@ class ColmeiaActiveCodeResolverTest {
 
     private class FakePort(private val matches: List<ColmeiaSummary>) : OwnedColmeiaPort {
         override fun listMeliponarioIdsByOwner(userId: Long) = emptyList<Long>()
-        override fun listByOwner(userId: Long, excludeStatusIds: Collection<Long>, limit: Int, offset: Int) =
+        override fun listByOwner(userId: Long, filter: com.bombus.colmeia.domain.ColmeiaCountFilter, limit: Int, offset: Int) =
             emptyList<ColmeiaSummary>()
         override fun findByCodeForOwner(userId: Long, code: Int) = matches
         override fun listStatusHistory(userId: Long, colmeiaId: Long, limit: Int) = emptyList<ColmeiaStatusHistoryEntry>()

@@ -61,7 +61,7 @@ class ColmeiaCodeAvailabilityTest {
         var lastIgnoreStatusIds: Collection<Long>? = null
 
         override fun listMeliponarioIdsByOwner(userId: Long) = emptyList<Long>()
-        override fun listByOwner(userId: Long, excludeStatusIds: Collection<Long>, limit: Int, offset: Int) =
+        override fun listByOwner(userId: Long, filter: com.bombus.colmeia.domain.ColmeiaCountFilter, limit: Int, offset: Int) =
             emptyList<ColmeiaSummary>()
         override fun findByCodeForOwner(userId: Long, code: Int) = emptyList<ColmeiaSummary>()
         override fun listStatusHistory(userId: Long, colmeiaId: Long, limit: Int) = emptyList<ColmeiaStatusHistoryEntry>()

@@ -5,6 +5,7 @@ import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
 import com.bombus.colmeia.application.port.outbound.StatusColmeiaLookupPort
 import com.bombus.colmeia.domain.ColmeiaCommandError
+import com.bombus.colmeia.domain.ColmeiaCountFilter
 import com.bombus.colmeia.domain.ColmeiaSummary
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -24,14 +25,27 @@ class ListOwnedColmeiasService(
         if (query.offset < 0) {
             throw ColmeiaCommandError.InvalidLimit()
         }
-        val excludeStatusIds =
-            if (query.includeLost) emptySet()
-            else properties.defaultExcludedStatuses.mapNotNull { statusLookupPort.findIdByName(it) }.toSet()
         return ownedColmeiaPort.listByOwner(
             userId = query.userId,
-            excludeStatusIds = excludeStatusIds,
+            filter = toFilter(query),
             limit = query.limit,
             offset = query.offset,
         )
     }
+
+    private fun toFilter(query: ListOwnedColmeiasQuery): ColmeiaCountFilter =
+        when {
+            query.statusId != null ->
+                ColmeiaCountFilter(speciesId = query.speciesId, includeStatusId = query.statusId)
+            query.includeLost ->
+                ColmeiaCountFilter(speciesId = query.speciesId)
+            else ->
+                ColmeiaCountFilter(
+                    speciesId = query.speciesId,
+                    excludeStatusIds = defaultExcludedIds(),
+                )
+        }
+
+    private fun defaultExcludedIds(): Set<Long> =
+        properties.defaultExcludedStatuses.mapNotNull { statusLookupPort.findIdByName(it) }.toSet()
 }
