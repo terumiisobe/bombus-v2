@@ -1,0 +1,766 @@
+================================================================================
+PLANNING DOCUMENT — Chat issue fixes (perdida, vendida count, detalhar, delete, history, tone)
+Project: bombus-v2  |  Phase: Refine  |  Date: 2026-10-12
+Base of the behavior: origin/main @ e702324 (PR #18). Read with git show origin/main:<path>.
+================================================================================
+Audience: the implement agent. No application code in this document — scope, decisions,
+contracts, and a sequenced delivery plan. This checkout (improve-ai-reply) is behind
+origin/main and does not contain the WhatsApp tool-calling bot. Apply the steps on a
+tree that contains origin/main @ e702324. Do not re-implement PRs #8–#18.
+
+--------------------------------------------------------------------------------
+1. SUMMARY
+--------------------------------------------------------------------------------
+One fix batch, planned together, with six behaviors. They share the chatbot and the
+colmeia use cases, and the owner reported them as one pass over the bot that is
+already on main. They are not one feature. Ship them in this document's order; do
+not split into separate plans unless the human says so.
+
+Shipped and in scope only to correct: bot CRUD (#8), count-by-name (#9, #10),
+dialogue tone (#11), vendida + dual exclude (#12), meliponário membership (#13),
+field-visit history through list-by-code (#14–#18).
+
+Settled from the owner's feedback: marking an active hive perdida does not ask for
+confirmation; a status change or delete prefers the active hive, and only an
+already inactive hive asks once before the write; detalhar shows code, species,
+status, and last visit; a perdida hive may be deleted; a clear "excluir" is
+honored; history prettiness is reply formatting. Every hive edit is by colmeia
+id (section 2.0). The code is only how the user names the hive. Vendida delete
+is recommended in section 5 and is part of the contracts below so
+implementation is not blocked.
+
+The retained WhatsApp text and the hive writes from that same session are in
+section 1b. They change the vendida-count cause: the count query is not what
+doubled code 12345. A status write after vendida inserted a second hive.
+
+--------------------------------------------------------------------------------
+1b. PRODUCTION CHAT (8–10 Oct 2026)
+--------------------------------------------------------------------------------
+Read on 2026-10-12 from sessao_chat in the production database. No other chat
+store exists. Do not put credentials, the host, or the phone number in code
+or in this document.
+
+sessao_chat id 1, usuario_whatsapp id 1. Row created 2026-09-29. Last message
+2026-10-08 15:38:51 UTC (12:38 America/Sao_Paulo). expires_at is 15 minutes
+later. conversation_context is a JSON array capped at 5 turns, so everything
+before those five turns is gone. There is no message on 9 or 10 Oct. The other
+row (sessao_chat id 39, last message 2026-10-05) is outside this window.
+
+Retained turns, in order:
+
+  ASSISTANT  Oi! Posso ajudar a listar colmeias, ver histórico de visitas,
+             cadastrar novas, registrar acompanhamentos, marcar colmeias como
+             perdidas ou vendidas, e contar colmeias. O que você precisa?
+  USER       acompanhamento
+  ASSISTANT  Para registrar um acompanhamento, preciso do código da colmeia e
+             do status que você observou. Se tiver uma observação adicional,
+             pode me informar também!
+  USER       quais status
+  ASSISTANT  Lists desenvolvendo, recuperando, estável, perdida, desconhecido,
+             vendida, then asks again for the status and the code.
+
+What that text shows:
+- The greeting says "listar" and "contar" as two phrases, and it never says
+  excluir. Soft disposition is the exit it offers.
+- "quais status" is answered, then the bot asks for code and status again.
+  That second ask is data it does not have yet. It is not a perdida
+  confirmation, and the word confirmação is not in this window.
+- No vendida count, no excluir, and no history reply survived the 5-turn cap.
+
+The writes from the same session, 12:14–12:26 BRT, are the trimmed turns.
+Latest historico row per hive:
+
+  999355  code 12345  desenvolvendo 12:14:07 → vendida 12:15:04
+  999356  code 12345  desenvolvendo 12:15:50 → vendida 12:18:30
+  359540  code 10000  perdida 12:17:54 (one new row; the hive is still perdida)
+  999357  code 10300  vendida 12:21:33 (its only row)
+  999358  code 10301  desenvolvendo 12:24:48 → recuperando 12:25:09 →
+              estavel 12:25:45 → estavel 12:26:10, note "colônia forte"
+
+999356 exists because 999355 was already vendida, which released code 12345,
+and the next status for that code inserted a new hive 46 seconds later.
+Both rows are still vendida. Latest-status vendida in the database at read
+time: 3 rows, 2 distinct codes (12345 twice, plus 10300). A row count of 3
+is what the count query returns. The owner was handling one code 12345.
+
+The same-status historico append in this session is 10301 estavel with the
+note "colônia forte", not perdida. Code 10000 gained a single perdida row
+and was not deleted afterward.
+
+--------------------------------------------------------------------------------
+2. FUNCTIONALITY
+--------------------------------------------------------------------------------
+Planned together. Grouped by behavior.
+
+2.0 Edits are by id
+The user types a code. That code is a lookup, not a write key. The chat resolves
+it to exactly one colmeia id, loads that row by id, and every update and delete
+runs against that id. No UPDATE, no INSERT, and no DELETE in an edit is
+predicated on code.
+
+Resolution, membership-scoped, all statuses. Active means the current status
+does not release the code. Inactive means perdida or vendida.
+- No row for the code → ColmeiaNotFound. Nothing is written.
+- The user did not name a status, and exactly one row is active → that id.
+  Inactive siblings are not the target. No confirmation.
+- The user did not name a status, and no row is active, and exactly one row is
+  inactive → that id. The chat confirms once, naming that status, and only then
+  writes.
+- The user named a status that matches exactly one row → that id. If that row
+  is inactive, confirm once before the write. If it is active, do not confirm
+  a status change.
+- Two or more active rows, or two or more inactive rows and no active row, or
+  several rows of a named status → AmbiguousDisposition or AmbiguousCode.
+  Nothing is written. The bot asks which status, then resolves again. It does
+  not guess the latest row.
+
+Preferring the active hive is the default. The 12:15:50 case has no active
+hive: 12345 is only vendida on 999355, so the edit targets that id after one
+confirmation, and does not insert 999356. Once an active hive shares the code,
+a later status change or delete hits the active id and leaves the inactive one
+alone, unless the user names the inactive status. create_colmeia is the only
+insert, and only when the user is registering a new hive.
+
+The id never appears in a tool result, a prompt, or a WhatsApp reply. The
+confirmation does not include it either.
+
+2.1 Perdida confirmation
+Marking an active hive perdida runs in that turn. There is no confirmation
+question for that transition. The retained chat does not contain one either;
+code 10000 was written perdida once (section 1b). RecordColmeiaStatusService
+still appends historico on every successful call, including a same-status visit
+(D2). That append stays. In this session it is what stored the note "colônia
+forte" on 10301, and it is not a question to the user. The tool and prompt
+lines that call that append a confirmation ("mesmo status = confirmação",
+"including same-status confirmations") go.
+
+The confirmation that stays is the one in section 2.0: a status change or
+delete whose target is already inactive (perdida or vendida) asks once, names
+that status, and writes only after the user says yes. One question, not a
+second one on top of the hard-delete yes.
+
+2.2 Vendida count
+"Quantas vendidas" returns one count per code the owner sold, not a second row
+created because the first vendida freed the code.
+
+Production cause (section 1b): at 12:15:04 code 12345 (hive 999355) became
+vendida. At 12:15:50 the same code was set to desenvolvendo and a new hive
+999356 was inserted, because record/create only sees an active hive and a
+vendida row releases the code. At 12:18:30 that new hive was also marked
+vendida. Both rows remain. Plus 10300, latest-status vendida is 3 rows and
+2 codes. The owner handled one 12345. The count query reporting 3 is the
+wrong number they saw. Do not "fix" that by excluding vendida from an explicit
+vendida filter.
+
+Also still true, and still fixed in the prompt and the count tool text: the
+count use case is include-only when a status is named. Stacking the default
+exclusion on top would return zero. list_colmeias has no status argument and,
+above 10 hives, answers with a species breakdown whose total does not apply
+the default exclusion. "vendidas" is not an exact vocabulary match, so a retry
+without status restates the living-herd total. Those paths stay closed. They
+are not what inserted 999356.
+
+Verified count-filter behavior, left unchanged:
+
+- CountColmeiasService.toFilter already treats status as include-only. A non-null
+  statusId builds ColmeiaCountFilter(includeStatusId = statusId) and leaves
+  excludeStatusIds empty. ColmeiaCountFilter rejects include and exclude together.
+- ColmeiaCountAdapter applies "status NOT IN (...)" only when hasExclude is true.
+  Testcontainers test "explicit vendida status is returnable when the exclusion is
+  not applied" counts 1 vendida hive. Unit test "explicit vendida status is
+  returnable" asserts includeStatusId = vendida and an empty exclude set.
+- breakdown() also leaves exclude empty. An explicit statusId plus groupBy still
+  filters with includeStatusId only. A groupBy with no statusId sums every status,
+  vendida included. That is intentional for "por status" (the vendida bucket is a
+  perStatus line; total is the sum of every bucket).
+- The wrong number is produced around that correct query. list_colmeias has no
+  status argument. includeLost toggles perdida and vendida together. When the
+  default (excluded) plain count is greater than 10, executeList calls count with
+  groupBy SPECIES and returns breakdown.total. That breakdown does not apply the
+  default exclusion, so the figure includes perdida and vendida while the tool
+  text says they are excluded. The system prompt says default counts already
+  exclude vendida and never says a named status replaces that exclusion, so a
+  turn that omits status restates the living-herd total (excludedStatusLabel
+  "perdida, vendida"). ChatVocabularyResolver matches "vendida" exactly;
+  "vendidas" is unknown_status. A retry without status is the living-herd total.
+
+Fix, two parts:
+- Leave toFilter, breakdown(), and the count SQL as they are. Remove the
+  list-as-count tool path (section 2.3). State in the count tool description
+  and the system prompt that status "vendida" (canonical vocabulary name,
+  including when the user says "vendidas") counts only that status, that total
+  is that count, that excludedStatusLabel is absent, and that groupBy is
+  omitted for a single-status question. On unknown_status, the model does not
+  call count again without the status. Regression tests in steps 2 and 7 lock
+  include-only so a later change cannot AND the default exclusion onto vendida
+  and return zero.
+- A status change resolves the code to one id (section 2.0) and updates that
+  row. That is the 12:15:50 case: 999355 is the only hive for the code and it
+  is vendida, so the chat confirms once and then sets that id back to
+  desenvolvendo. 999356 is not created. create_colmeia still inserts when the
+  user is registering a new hive. update_colmeia is what the model must call
+  for "código 12345 está desenvolvendo" after a sale. If an active hive already
+  shares the code, the status change hits the active id and does not ask.
+
+2.3 Detalhar versus count
+Count stays count_colmeias. The user-facing verb for one hive is detalhar.
+The Portuguese word "listar" leaves the capability blurb, the fallback help, the
+system prompt, and every tool description. list_colmeias leaves the tool list,
+including its species_count branch. There is no alias that maps listar onto a
+count.
+
+detalhar is one hive. The user says a code; the read uses the same preference
+as section 2.0 (the active hive when one exists, otherwise the single inactive
+hive) and loads that id. A read does not ask for confirmation. The reply shows
+four things and nothing else: code, species common name, current status, and
+the last visit. The last visit is the latest historico row (date in
+America/Sao_Paulo, its status, its note), the same line shape as section 2.5.
+No abbreviation, no scientific name, no meliponário, no start date, no id.
+
+ListOwnedColmeiasUseCase stays compiled. It is no longer a chatbot tool. Do not
+delete it in this batch.
+
+2.4 Delete after perdida
+DeleteColmeiaUseCase today calls ColmeiaActiveCodeResolver, which drops
+perdida/vendida rows. A code that is only perdida throws ColmeiaNotFound. A code
+held by an active hive and an older perdida row deletes the active hive
+(ColmeiaCrudServicesTest, "delete ignores vendida with the same code and deletes
+only the active hive").
+
+New rule: resolve the code with section 2.0, then delete that id.
+DeleteColmeiaCommand carries the id, not the code. The port call is
+deleteByIdForOwner. An active hive is deleted without an extra inactive
+question; the existing one yes (section D-7) still applies. A code that is only
+perdida resolves to that inactive id; the one yes names perdida, then that id
+is deleted. The user does not have to repeat "perdida" as a status filter.
+When an active hive shares the code, the default delete is the active id and
+the inactive sibling stays. Naming perdida resolves the inactive id, the yes
+names perdida, and the active sibling stays. Status is only an input to
+resolution. It is not a column predicate on the DELETE.
+
+2.5 History formatting
+The retained chat has no history reply. The visit that has to read cleanly is
+the one that was stored: 08/10/2026 12:26 — estavel, note "colônia forte"
+(code 10301). History is loaded for the resolved colmeia id (section 2.0), not
+for every row that shares the code. list_colmeia_history still returns the use
+case's fields only: recordedAt, statusName, note. Newest first. Limit unchanged
+(default 10, max 50). The tool JSON formats recordedAt for WhatsApp and adds a
+lines array the model pastes. No new history columns, no source, no visitedAt.
+Empty history is one Portuguese sentence, not a raw count of zero.
+
+2.6 Softer delete tone
+The 8 Oct greeting offers "marcar colmeias como perdidas ou vendidas" and does
+not mention excluir. That is the pushiness. Soft disposition stays available.
+The prompt and the update/delete tool descriptions stop insisting on it, stop
+refusing excluir, and stop redirecting a clear excluir into perdida/vendida.
+delete_colmeia stays a real tool. When the user asks to excluir, the model
+calls it (after the one confirmed=true check). It does not lecture about
+registry mistakes. The first-turn overview names excluir alongside the other
+capabilities. Code 10000 is still perdida; this window does not contain the
+failed excluir, and section 2.4 is what makes that delete succeed.
+
+--------------------------------------------------------------------------------
+3. ARCHITECTURE OVERVIEW
+--------------------------------------------------------------------------------
+Two bounded contexts, already on main. No new service, no new provider, no HTTP
+resource. WhatsApp remains the only driving adapter, via the existing tool loop.
+
+  WhatsApp → HandleIncomingWhatsAppMessageService
+               → ConversationAiPort (OpenAI adapter; system prompt lives here)
+               → ChatToolExecutor
+                    → CountColmeiasUseCase          (unchanged filter)
+                    → DetailColmeiaUseCase          (new inbound port)
+                    → ListColmeiaHistoryUseCase     (unchanged)
+                    → resolve code → one colmeia id
+                    → RecordColmeiaStatusUseCase    (writes that id)
+                    → DeleteColmeiaUseCase          (deletes that id)
+                    → DetailColmeiaUseCase          (loads that id)
+
+Count and record stay behind the ports they already have. The AI stays behind
+ConversationAiPort; this batch only changes prompt text and tool schemas. Fakes
+of those ports cover the application tests. Output quality of tone is locked by
+assertions on the prompt and tool descriptions, not by a new eval harness.
+
+Why this shape: the vendida total of 3 counts two rows for code 12345. The
+second row was inserted because the edit was keyed by code and the vendida row
+no longer counted as that code. Resolving to 999355 and updating that id does
+not insert. The count filter stays include-only; putting the default exclusion
+back into the SQL would zero an explicit vendida count. The JDBC adapter loads
+and writes rows it can already see, by id.
+
+No REST controller is added. No @WebMvcTest. Persistence coverage for the new
+read is Testcontainers + @SpringBootTest, the same slice as
+OwnedColmeiaAdapterIntegrationTest (JDBC, not @DataJpaTest).
+
+--------------------------------------------------------------------------------
+4. KEY DECISIONS & TRADEOFFS
+--------------------------------------------------------------------------------
+D-1  Where to fix the vendida count
+Options: (a) AND the default exclusion onto an explicit status filter;
+(b) make breakdown() exclude perdida/vendida unless a status is named;
+(c) leave the count use case and SQL, and stop the chat from answering
+"quantas vendidas" with the unfiltered total or the list-as-count breakdown;
+(d) resolve the code to one colmeia id and update that id, so a status change
+never inserts a second row for the same code.
+(a) returns zero for vendida: include and NOT IN cannot both match that id.
+The domain type already forbids the combination. (b) hides the vendida bucket
+from "quantas por status" and breaks the shipped breakdown tests, which sum
+every status on purpose. (c) is necessary so the model does not restate the
+living herd, and it is not sufficient: a correct row count on 8 Oct is 3,
+and the owner was handling one code 12345 (section 1b). (d) is what stops
+999356 from being born: the write hits 999355's id. create_colmeia still
+inserts, so a deliberate new hive can reuse a sold code.
+Recommendation: (c) and (d). Do not change the count SQL. Edits never use code
+as the write key (section 2.0).
+Flip if the 12:15:50 desenvolvendo was meant as a second hive. Then drop (d)
+and accept two vendida rows for one code. The 46-second gap and the owner's
+"contagem errada" are why (d) is the default.
+
+D-2  Detalhar versus a renamed herd list
+Options: (a) keep list_colmeias, rename the Portuguese word, and still collapse
+to a species count above 10 hives; (b) remove that tool and add a one-hive
+detail tool.
+(a) keeps the alias the owner rejected. (b) makes count and detalhar different
+operations. The herd-list use case stays in the binary without a chatbot entry.
+Recommendation: (b).
+Flip if the owner later wants a paginated herd list under a different verb. That
+list must not call count and must not be named listar.
+
+D-3  Which row a status change or delete hits when a code is shared
+Options: (a) keep "active only", and a sole inactive code is not found;
+(b) always edit the inactive row and spare the active one; (c) prefer the
+single active row when one exists; when none exists, the single inactive row,
+and the chat confirms once before the write.
+(a) cannot change or delete a perdida hive. (b) edits the sold hive when the
+user meant the live one. (c) matches the owner: the active hive wins, and the
+inactive hive is used only when it is the one that exists, after a yes.
+Recommendation: (c), then the write is by that id (section 2.0).
+Flip if a shared code should always ask which row. Do not go back to (a).
+
+D-4  Vendida uses the same delete rule
+Options: (a) perdida only; vendida stays ColmeiaNotFound; (b) both, via the
+existing releasesCode set (perdida, vendida).
+The owner confirmed perdida only. Vendida already shares code-release, count
+exclusion, and the active-code ignore list. A special case for vendida is a
+second resolver. (b) is the recommendation and is what the contracts implement.
+Flip if the human says a vendida hive must stay undeletable: then a named
+vendida status is ColmeiaNotFound and is not a reason to throw
+AmbiguousDisposition. Until that call, implement (b).
+
+D-5  Where history gets pretty
+Options: (a) prompt only, model reformats Instant.toString(); (b) format in the
+tool JSON from the three fields the use case returns; (c) new columns.
+(a) is how the raw dump happens today (date is recordedAt.toString()). (c) is
+out of scope. (b) is deterministic and still presentation.
+Recommendation: (b). Zone America/Sao_Paulo, pattern dd/MM/yyyy HH:mm, locale
+pt-BR. Clock.systemUTC() stays. The formatter converts.
+Flip if the deployment is not Brazil: move the zone to a property. Do not store
+a local timestamp.
+
+D-6  When a write asks for confirmation
+Options: (a) confirm every status change; (b) never confirm a status change;
+(c) confirm only when the target hive is already inactive.
+(a) adds the turn the owner rejected for marking an active hive perdida.
+(b) writes a vendida or perdida hive without the yes they just asked for.
+(c) marks an active hive perdida in the same turn, and asks once before
+changing or deleting a hive that is already perdida or vendida. The question
+names that status. It is one yes, not a second gate on top of D-7.
+Recommendation: (c). The historico append still happens on the write, including
+a same-status visit. The prompt stops calling that append a confirmation.
+Flip if the inactive yes turns out to be the nag they rejected. Then drop it
+for status changes and keep D-7 for delete only.
+
+D-7  Hard-delete confirmation
+The confirmed=true gate on delete_colmeia stays: one yes, then the tool runs.
+The change in this batch is the surrounding copy (section 2.6), not removal of
+the gate.
+Flip if the owner wants excluir with no yes. Do not remove it in this batch.
+
+--------------------------------------------------------------------------------
+5. RISKS & OPEN QUESTIONS
+--------------------------------------------------------------------------------
+Open question (does not block; D-4 is in force):
+- Should vendida be deletable the same way as perdida? Recommendation: yes.
+  The human can override before implementation. If they do, adjust only the
+  resolution in step 3 and the delete tool copy in steps 7–8.
+
+The 5-turn cap means the vendida-count reply itself is not in sessao_chat.
+Section 1b uses the writes from that session as the trace. Do not treat the
+missing reply as evidence the count was fine.
+
+Risks, already decided:
+- Tone and "do not nag" are prompt obligations. Unit tests lock phrases. They
+  do not prove a live model will comply. No new eval suite in this batch.
+- After list_colmeias is removed, ListOwnedColmeiasUseCase has no production
+  caller. Leave the use case, its port, and its tests. Do not delete them here.
+- Two perdida rows with the same code and no other identifier the user can say
+  are AmbiguousCode. The bot says it cannot pick. It does not delete either.
+- A reused code with an active hive resolves to that active id, so detalhar,
+  history, update, and delete use it and do not ask. A code with only an
+  inactive hive resolves to that id; detalhar and history show it without
+  asking, and a status change or delete asks once, naming perdida or vendida,
+  before the write. The tool description says to pass status only when the
+  user means the inactive sibling of a live hive.
+- Implement on origin/main's files. The improve-ai-reply working tree does not
+  contain them.
+
+--------------------------------------------------------------------------------
+6. DELIVERY PLAN
+--------------------------------------------------------------------------------
+Inside-out. Each step depends only on earlier steps. Contracts, not method bodies.
+No Flyway migration. No application.yml change. No new Clock bean.
+
+Step 1 — Domain: detail type and ambiguous-delete error
+Goal: Types the later use cases return or throw, with no infrastructure.
+Files/packages:
+  src/main/kotlin/com/bombus/colmeia/domain/ColmeiaDetail.kt (new)
+  src/main/kotlin/com/bombus/colmeia/domain/ColmeiaCommandError.kt (add subclass)
+Contracts:
+  data class ColmeiaDetail(
+      val code: Int?,
+      val speciesCommonName: String,
+      val statusName: String?,
+      val lastVisit: ColmeiaStatusHistoryEntry?,
+  )
+  lastVisit is the latest historico row (recordedAt, statusName, note), or null
+  when the hive has none. No id, abbreviation, scientific name, meliponário
+  name, or start date on this type.
+  class AmbiguousDisposition(statusNames: List<String>) : ColmeiaCommandError
+  The message lists those status names and states that no hive was deleted.
+  The message contains no numeric id.
+Depends on: nothing.
+Acceptance / tests: none in this step. Steps 3 and 4 assert the type and the error.
+
+Step 2 — Application: lock the vendida count contract
+Goal: Keep explicit status include-only, including breakdowns, and lock it with tests.
+Files/packages:
+  src/main/kotlin/com/bombus/colmeia/application/CountColmeiasService.kt
+    (no behavior change)
+  src/test/kotlin/com/bombus/colmeia/application/CountColmeiasServiceTest.kt
+Contracts (already implemented; do not edit the filter logic):
+  plain count, statusId == null →
+    ColmeiaCountFilter(speciesId, includeStatusId = null,
+      excludeStatusIds = ids of defaultExcludedStatuses)
+  plain count, statusId != null →
+    ColmeiaCountFilter(speciesId, includeStatusId = statusId, excludeStatusIds = empty)
+  breakdown (any groupBy) →
+    ColmeiaCountFilter(speciesId, includeStatusId = query.statusId, excludeStatusIds = empty)
+  Do not add excludeStatusIds when includeStatusId is set. Do not change
+  ColmeiaCountAdapter SQL.
+Depends on: nothing.
+Acceptance / tests: unit, CountColmeiasServiceTest.
+  - Keep "explicit vendida status is returnable".
+  - Add: groupBy STATUS and statusId = vendida → last filter includeStatusId = vendida,
+    excludeStatusIds empty.
+  - Add: groupBy SPECIES and statusId = vendida → the same filter.
+  - Keep "per-status breakdown includes perdida vendida and the sem status group"
+    (no statusId → exclude empty, total sums every bucket).
+
+Step 3 — Application: resolve a code to one id, then record status on that id
+Goal: "código 12345 está desenvolvendo" after that code was vendida loads hive
+999355 by id and updates it. It does not insert 999356.
+Files/packages:
+  src/main/kotlin/com/bombus/colmeia/application/ResolveColmeiaIdService.kt (new)
+  src/main/kotlin/com/bombus/colmeia/application/port/inbound/ResolveColmeiaIdUseCase.kt (new)
+  src/main/kotlin/com/bombus/colmeia/application/RecordColmeiaStatusService.kt
+  src/main/kotlin/com/bombus/colmeia/application/port/inbound/RecordColmeiaStatusUseCase.kt
+  src/test/kotlin/com/bombus/colmeia/application/ColmeiaCrudServicesTest.kt
+  src/test/kotlin/com/bombus/colmeia/application/ResolveColmeiaIdServiceTest.kt (new)
+Contracts:
+  data class ResolveColmeiaQuery(val userId: Long, val code: Int, val statusId: Long? = null)
+  data class ResolvedColmeia(val colmeiaId: Long, val inactive: Boolean, val statusName: String)
+  fun resolve(query: ResolveColmeiaQuery): ResolvedColmeia
+  Loads findByCodeForOwner. Applies section 2.0. inactive is true when the
+  chosen row's status releases the code. Does not write.
+  Throws ColmeiaNotFound, AmbiguousCode, or AmbiguousDisposition.
+  data class RecordColmeiaStatusCommand(
+      val userId: Long,
+      val colmeiaId: Long,
+      val statusId: Long,
+      val note: String?,
+  )
+  The command has no code. The service loads the hive by colmeiaId for that
+  user. Missing or not accessible → ColmeiaNotFound. It appends historico on
+  that id, including when the status is unchanged and when the current status
+  is perdida or vendida. It does not insert a colmeia. It does not confirm.
+  Confirmation of an inactive target is the chat gate in step 7, before this
+  call. It does not call ColmeiaActiveCodeResolver.
+  Replace the test "record of code that is only vendida is not found": resolving
+  a sole vendida code returns that id with inactive true. Record on that id
+  appends historico. Same for a sole perdida row. Active + vendida and no
+  statusId resolves to the active id with inactive false. Active + vendida and
+  statusId = vendida resolves to the vendida id with inactive true.
+Depends on: step 1 (AmbiguousDisposition).
+Acceptance / tests: unit, fake port.
+  - Sole vendida code → its id, inactive true. record(desenvolvendo) appends on
+    that id, no insert.
+  - Sole perdida code → its id, inactive true.
+  - Active + vendida, no statusId → the active id, inactive false.
+  - Active + vendida, statusId = vendida → the vendida id, inactive true.
+  - Two vendida, no active, no statusId → AmbiguousDisposition.
+  - Record command with a foreign id → ColmeiaNotFound, no historico write.
+
+Step 4 — Application: delete the resolved id
+Goal: Hard-delete one hive by id after section 2.0 has chosen it.
+Files/packages:
+  src/main/kotlin/com/bombus/colmeia/application/port/inbound/DeleteColmeiaUseCase.kt
+  src/main/kotlin/com/bombus/colmeia/application/DeleteColmeiaService.kt
+  src/test/kotlin/com/bombus/colmeia/application/ColmeiaCrudServicesTest.kt
+Contracts:
+  data class DeleteColmeiaCommand(
+      val userId: Long,
+      val colmeiaId: Long,
+  )
+  fun delete(command: DeleteColmeiaCommand): DeletedColmeia
+  The command has no code and no statusId. DeletedColmeia stays (code,
+  speciesCommonName, statusName). The service loads by colmeiaId for that user
+  and calls deleteByIdForOwner. It does not call ColmeiaActiveCodeResolver and
+  it does not query by code. A perdida id deletes. A missing or inaccessible
+  id is ColmeiaNotFound and deleted ids stay empty.
+  Which id is chosen stays in ResolveColmeiaIdUseCase (step 3). The chat calls
+  resolve, then delete. Update ColmeiaCrudServicesTest "delete ignores vendida
+  with the same code and deletes only the active hive" and "delete of code that
+  is only vendida is not found": those lock the old resolver. Resolution cases
+  live in ResolveColmeiaIdServiceTest. Delete tests take an id.
+Depends on: step 1. Step 3 owns resolution; this step does not call it.
+Acceptance / tests: unit, ColmeiaCrudServicesTest (fake port).
+  - delete(perdida id) → that id deleted.
+  - delete(active id) → that id deleted.
+  - delete(id the user does not own) → ColmeiaNotFound, no delete.
+  Resolution, in ResolveColmeiaIdServiceTest:
+  - Sole perdida code → that id, inactive true.
+  - Active + perdida, no statusId → the active id, inactive false.
+  - Active + perdida, statusId = perdida → the perdida id, inactive true.
+  - statusId = perdida and the only row is active → ColmeiaNotFound.
+  - Two perdida rows, no active, no statusId → AmbiguousDisposition.
+  - Two perdida rows, statusId = perdida → AmbiguousCode.
+  - Same cases with vendida in place of perdida (D-4).
+
+Step 5 — Application: detail one hive by its id
+Goal: Inbound use case that returns ColmeiaDetail for one accessible hive id.
+Files/packages:
+  src/main/kotlin/com/bombus/colmeia/application/port/inbound/DetailColmeiaUseCase.kt (new)
+  src/main/kotlin/com/bombus/colmeia/application/DetailColmeiaService.kt (new)
+  src/main/kotlin/com/bombus/colmeia/application/port/outbound/OwnedColmeiaPort.kt
+    (add findDetailById)
+  src/test/kotlin/com/bombus/colmeia/application/DetailColmeiaServiceTest.kt (new)
+Contracts:
+  interface DetailColmeiaUseCase {
+      fun detail(query: DetailColmeiaQuery): ColmeiaDetail
+  }
+  data class DetailColmeiaQuery(
+      val userId: Long,
+      val colmeiaId: Long,
+  )
+  The query has no code. The chat resolves the code first (step 3), then calls
+  detail with the id.
+  fun findDetailById(userId: Long, colmeiaId: Long): ColmeiaDetail?
+  Membership-scoped. Null when that id is not in the user's meliponários.
+  The service maps null to ColmeiaNotFound. The returned detail is code,
+  species common name, current status, and last visit. No ids in ColmeiaDetail.
+  @Transactional(readOnly = true) on the service.
+Depends on: step 1.
+Acceptance / tests: unit, DetailColmeiaServiceTest, fake port.
+  - Known id → code, species common name, status, last visit with note.
+  - Last visit null when the hive has no historico row.
+  - Id the user does not own → ColmeiaNotFound.
+  Code-to-id cases stay in ResolveColmeiaIdServiceTest (step 3), including a
+  sole perdida code and an active+perdida code.
+
+Step 6 — Adapter: detail query by id
+Goal: Implement findDetailById against Postgres. No schema change.
+Files/packages:
+  src/main/kotlin/com/bombus/colmeia/adapter/outbound/persistence/OwnedColmeiaAdapter.kt
+  src/test/kotlin/com/bombus/colmeia/adapter/outbound/persistence/OwnedColmeiaAdapterIntegrationTest.kt
+Contracts:
+  SQL selects, for the colmeia row with c.id = :id and ACCESSIBLE_COLMEIA
+  (same membership fragment as the other owned reads):
+    c.code,
+    e.common_name,
+    latest historico status name (LATERAL recorded_at DESC, id DESC, limit 1;
+    status name may be null),
+    that same latest row's recorded_at, status name, and note as lastVisit
+  Map to ColmeiaDetail. Do not select scientific_name, abbreviation,
+  meliponario name, or start_date for this read. The id is the parameter, not
+  a selected field on ColmeiaDetail.
+Depends on: step 5.
+Acceptance / tests: Testcontainers, @SpringBootTest, same class style as
+  OwnedColmeiaAdapterIntegrationTest. Not @DataJpaTest. Not @WebMvcTest.
+  - Member sees code, species common name, status name, and last visit note
+    and timestamp.
+  - Another user's hive id is null.
+  - A meliponário the user does not belong to is null (owner_id alone grants nothing).
+
+Step 7 — Application: chatbot tools
+Goal: Point the tool loop at the corrected behaviors. Prompt text is step 8.
+Files/packages:
+  src/main/kotlin/com/bombus/chatbot/application/ChatToolNames.kt
+  src/main/kotlin/com/bombus/chatbot/application/ChatToolExecutor.kt
+  src/main/kotlin/com/bombus/chatbot/application/ChatbotAgentProperties.kt
+  src/main/kotlin/com/bombus/chatbot/application/FieldVisitReplyFormatter.kt (new)
+  src/test/kotlin/com/bombus/chatbot/application/ChatToolExecutorTest.kt
+  src/test/kotlin/com/bombus/chatbot/application/FieldVisitReplyFormatterTest.kt
+  src/test/kotlin/com/bombus/chatbot/application/ChatbotAgentPropertiesTest.kt
+Contracts:
+  ChatToolNames: add DETAIL_COLMEIA = "detail_colmeia". Remove LIST_COLMEIAS
+  from definitions() and from any executor branch. Delete the species-count
+  threshold path (the constant and the count calls that exist only for it).
+  FieldVisitReplyFormatter (pure, zone parameter so tests inject a fixed zone):
+    zone default America/Sao_Paulo
+    format(entry) → one string
+      "dd/MM/yyyy HH:mm — {statusName}"
+      when note is non-null and non-blank, append newline "nota: {note}"
+    emptyHistory(code) → "Nenhuma visita registrada para o código {code}."
+  executeListHistory JSON:
+    Resolve the code to one colmeia id (section 2.0), then load that id's visits.
+    Payload: code, count,
+    lines: one formatted string per visit, newest first (use-case order),
+    visits: [{ date: that same formatted date, status, note }]
+    date is never Instant.toString(). The payload has no id.
+    count 0 → lines is a one-element list of emptyHistory(code), visits empty.
+  detail_colmeia tool:
+    description says detalhar one hive and lists the payload: code, species,
+    status, last visit. It does not say listar.
+    parameters: code integer required; status string-or-null optional
+    (vocabulary status name). The model never sends a colmeia id.
+    Execution: resolve the status name, then ResolveColmeiaIdUseCase, then
+    DetailColmeiaUseCase.detail(userId, colmeiaId).
+    Success JSON, ids absent:
+      code, species, status,
+      lastVisit: { date, status, note } or null
+    date is the FieldVisitReplyFormatter line date (dd/MM/yyyy HH:mm,
+    America/Sao_Paulo), never Instant.toString(). species is the common name.
+    ColmeiaNotFound, AmbiguousCode, and AmbiguousDisposition stay the existing
+    error JSON shape (error = exception simple name, message = exception message).
+  count_colmeias description obligations (English tool text):
+    - status names perdida and vendida are valid filters.
+    - A named status counts only that status. total is that count.
+    - The default exclusion applies only when status is omitted.
+    - A single-status question omits groupBy. "vendidas" is passed as "vendida".
+    - unknown_status is not followed by a count call that drops the status.
+    Executor behavior for a resolved status stays: CountColmeiasQuery.statusId
+    is that id; excludedStatusLabel is null. Do not add a second count call.
+  update_colmeia description obligations:
+    - Prefer the active hive for the code. A stated status on an active hive,
+      including changing it to perdida or vendida, is recorded in the same turn.
+      The tool does not ask the user to confirm that.
+    - When the resolved hive is inactive, the executor does not call record
+      until confirmed=true. The reply asks once and names the current status
+      ("está vendida" / "está perdida"). Parameters gain confirmed, default
+      false, used only for that inactive target.
+    - Historico is still appended by the use case after the write, including
+      when the status did not change. That append is not a question.
+    - The description does not tell the model to prefer this tool over
+      delete_colmeia.
+    - A code whose only hive is perdida or vendida is still this tool, after
+      the one yes. Do not call create_colmeia for a status change on a code
+      the user already has.
+    RecordColmeiaStatusCommand receives the resolved colmeiaId, never the code.
+  delete_colmeia description obligations:
+    - Permanent delete of one hive, including a perdida or vendida hive.
+    - parameters stay code and confirmed, plus status string-or-null.
+      The model never sends a colmeia id.
+    - confirmed=false still throws ColmeiaCommandError.ConfirmationRequired
+      before any resolve or delete (existing check, first).
+    - When the user names a status, pass that vocabulary name into resolve.
+      DeleteColmeiaCommand receives only the resolved colmeiaId.
+    - When the user asked to delete the perdida hive and an active hive shares
+      the code, pass status "perdida" so resolve returns the perdida id. The
+      one yes names perdida. The active row is not the target.
+    - Default, with no status, is the active hive when one exists.
+    - AmbiguousDisposition: ask which status, using the names in the message,
+      then call again.
+    - The description does not say "registry mistakes only" and does not say
+      to prefer perdida or vendida.
+  ChatbotAgentProperties.fallbackReply, pt-BR, one or two sentences: detalhar,
+  histórico de visitas, cadastrar, registrar visita, marcar perdida ou vendida,
+  excluir, contar. The word listar is absent. It does not say excluir is only
+  for a registry mistake.
+Depends on: steps 3, 4, and 5 (inbound ports). The formatter does not depend
+  on them. Step 6 may land before or after this step; the executor tests fake
+  the use cases.
+Acceptance / tests: unit.
+  FieldVisitReplyFormatterTest: an Instant renders dd/MM/yyyy HH:mm in
+  America/Sao_Paulo; a note adds a "nota:" line; a null note does not; empty
+  history is the Portuguese sentence with the code.
+  ChatToolExecutorTest:
+  - definitions contain detail_colmeia and do not contain list_colmeias.
+  - no tool description contains "listar", "prefer perdida", or
+    "same-status confirmations".
+  - count status "vendida" → CountColmeiasQuery statusId of the vendida fixture,
+    payload status "vendida", excludedStatusLabel null, total equal to the fake.
+  - count with no status still sets excludedStatusLabel "perdida, vendida".
+  - detail returns code, species, status, and lastVisit, and the JSON has no
+    "id" field.
+  - detail with status "perdida" resolves with that statusId, then calls
+    DetailColmeiaQuery(colmeiaId = the resolved id).
+  - history payload lines equal the formatter output; date is not an ISO instant
+    ending in Z.
+  - update on an active hive calls record in that turn and does not ask.
+  - update on a sole vendida hive with confirmed false does not call record
+    and returns a confirmation that names vendida.
+  - update on that same hive with confirmed true calls
+    RecordColmeiaStatusCommand(colmeiaId = that id).
+  - delete with status "perdida" and confirmed true resolves the perdida id and
+    calls DeleteColmeiaCommand(colmeiaId = that id). The command has no code.
+  - delete confirmed false is still error ConfirmationRequired and does not call
+    the use case.
+  ChatbotAgentPropertiesTest: fallback contains "detalhar" and does not contain
+  "listar".
+
+Step 8 — Adapter: system prompt
+Goal: The model is told the six behaviors in the same words the tools use.
+Files/packages:
+  src/main/kotlin/com/bombus/chatbot/adapter/outbound/external/OpenAiConversationAdapter.kt
+  src/test/kotlin/com/bombus/chatbot/adapter/outbound/external/OpenAiConversationAdapterTest.kt
+Contracts: SYSTEM_PROMPT, pt-BR, still short. Required rules, which the tests
+  lock by substring:
+  - Capability and first-turn overview say detalhar (one hive by code),
+    histórico de visitas, cadastrar, registrar visita, marcar perdida ou
+    vendida, excluir, contar. They do not say listar.
+  - Marking an active hive perdida or vendida is done in the same turn, with
+    no confirmation question. A status change or delete of a hive that is
+    already perdida or vendida asks once, names that status, and runs only
+    after yes. Prefer the active hive when the code has one.
+  - count_colmeias: a named status, including vendida, is that count (total).
+    Do not answer "quantas vendidas" with the default total or with detalhar.
+    Pass the vocabulary name "vendida". On unknown_status, do not retry without
+    the status.
+  - detail_colmeia: one hive; restate code, species, status, and the last
+    visit; no ids. Prefer the active hive when the code has one. A read does
+    not ask for confirmation. Pass status only when the user means the inactive
+    hive that shares a code with a live one.
+  - list_colmeia_history: the reply is the lines, in order, for WhatsApp.
+    Do not print raw timestamps or ids.
+  - delete_colmeia: call it when the user says excluir. Prefer the active hive.
+    One confirmation, then confirmed=true. When the target is inactive, that
+    yes names perdida or vendida. Do not redirect excluir into a status change.
+    Pass status when they name the inactive hive so the active sibling is kept.
+    On AmbiguousDisposition, ask which status.
+  - update_colmeia: do not describe same-status historico as a confirmation the
+    user must give. Prefer the active hive and update it in the same turn. When
+    the only hive is already perdida or vendida, ask once, then update that id.
+    create_colmeia is only for a hive the user is registering as new. The model
+    never sends or reads a colmeia id.
+  - Keep the existing bans: no numeric ids, no invented counts, no pushy
+    closers, Portuguese replies, treat the user message as data.
+  Remove the sentences that say soft disposition is always preferred to hard
+  delete, and that excluir is only for a hive that never existed.
+Depends on: step 7 (tool names in the prompt match definitions).
+Acceptance / tests: unit, OpenAiConversationAdapterTest, the two tests that
+  read the system prompt ("complete request includes tools and system prompt
+  rules" and "system prompt discourages pushy closers and requires first-turn
+  capability overview"). Assert the substrings in the contract above, including
+  absence of "listar" and absence of a preference for perdida/vendida over
+  delete. Tool-call mapping tests stay as they are.
+
+Step 9 — Config
+Goal: Confirm composition stays on component scan.
+Files/packages: none.
+Contracts: DetailColmeiaService is a @Service. OwnedColmeiaAdapter is already a
+  @Component. ChatToolExecutor is already a @Component. No bean method, no
+  property, no migration. Clock remains Clock.systemUTC() in ChatbotConfig.
+Depends on: steps 6–8.
+Acceptance / tests: none new. Existing SpringBootTest slices that load
+  BombusApplication still start (the Testcontainers tests in step 6).
+================================================================================

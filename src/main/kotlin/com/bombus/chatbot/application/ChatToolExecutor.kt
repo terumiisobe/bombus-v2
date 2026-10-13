@@ -11,13 +11,16 @@ import com.bombus.colmeia.application.port.inbound.CreateColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
+import com.bombus.colmeia.application.port.inbound.DetailColmeiaQuery
+import com.bombus.colmeia.application.port.inbound.DetailColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryQuery
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
-import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
-import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
+import com.bombus.colmeia.application.port.inbound.ResolveColmeiaIdUseCase
+import com.bombus.colmeia.application.port.inbound.ResolveColmeiaQuery
+import com.bombus.colmeia.application.port.inbound.ResolvedColmeia
 import com.bombus.colmeia.domain.ColmeiaCommandError
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.ColmeiaVocabulary
@@ -37,19 +40,21 @@ import java.time.Instant
 class ChatToolExecutor(
     private val countColmeias: CountColmeiasUseCase,
     private val vocabularyUseCase: ListColmeiaVocabularyUseCase,
-    private val listOwnedColmeias: ListOwnedColmeiasUseCase,
+    private val resolveColmeiaId: ResolveColmeiaIdUseCase,
+    private val detailColmeia: DetailColmeiaUseCase,
     private val listColmeiaHistory: ListColmeiaHistoryUseCase,
     private val createColmeia: CreateColmeiaUseCase,
     private val recordColmeiaStatus: RecordColmeiaStatusUseCase,
     private val deleteColmeia: DeleteColmeiaUseCase,
     private val objectMapper: ObjectMapper,
     private val countProperties: ColmeiaCountProperties,
+    private val visitFormatter: FieldVisitReplyFormatter = FieldVisitReplyFormatter(),
 ) {
 
     fun definitions(): List<ToolDefinition> = listOf(
         COUNT_COLMEIAS_DEF,
         LIST_VOCABULARY_DEF,
-        LIST_COLMEIAS_DEF,
+        DETAIL_COLMEIA_DEF,
         LIST_COLMEIA_HISTORY_DEF,
         CREATE_COLMEIA_DEF,
         UPDATE_COLMEIA_DEF,
@@ -61,7 +66,7 @@ class ChatToolExecutor(
             when (call.name) {
                 ChatToolNames.COUNT_COLMEIAS -> executeCount(userId, call.argumentsJson)
                 ChatToolNames.LIST_VOCABULARY -> executeListVocabulary()
-                ChatToolNames.LIST_COLMEIAS -> executeList(userId, call.argumentsJson)
+                ChatToolNames.DETAIL_COLMEIA -> executeDetail(userId, call.argumentsJson)
                 ChatToolNames.LIST_COLMEIA_HISTORY -> executeListHistory(userId, call.argumentsJson)
                 ChatToolNames.CREATE_COLMEIA -> executeCreate(userId, call.argumentsJson)
                 ChatToolNames.UPDATE_COLMEIA -> executeUpdate(userId, call.argumentsJson)
@@ -153,44 +158,26 @@ class ChatToolExecutor(
         return objectMapper.writeValueAsString(payload)
     }
 
-    private fun executeList(userId: Long, argumentsJson: String): String {
+    private fun executeDetail(userId: Long, argumentsJson: String): String {
         val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
-        val includeLost = args.path("includeLost").asBoolean(false)
-        val total = countColmeias.count(CountColmeiasQuery(userId = userId)).total
-        if (!includeLost && total > SPECIES_COUNT_THRESHOLD) {
-            val breakdown = countColmeias.count(
-                CountColmeiasQuery(
-                    userId = userId,
-                    groupBy = setOf(CountDimension.SPECIES),
-                ),
-            )
-            return objectMapper.writeValueAsString(
-                mapOf(
-                    "mode" to "species_count",
-                    "total" to breakdown.total,
-                    "perSpecies" to (breakdown.perSpecies?.map {
-                        mapOf(
-                            "commonName" to it.commonName,
-                            "count" to it.count,
-                        )
-                    } ?: emptyList()),
-                ),
+        val code = args.optionalInt("code") ?: return errorJson("missing_code", "code is required")
+        val resolved = resolveHive(userId, code, args.optionalString("status"))
+        if (resolved is ResolveHive.Failed) return resolved.errorJson
+        val hive = (resolved as ResolveHive.Ok).value
+        val detail = detailColmeia.detail(DetailColmeiaQuery(userId = userId, colmeiaId = hive.colmeiaId))
+        val lastVisit = detail.lastVisit?.let { entry ->
+            mapOf(
+                "date" to visitFormatter.formatDate(entry),
+                "status" to entry.statusName,
+                "note" to entry.note,
             )
         }
-
-        val items = listOwnedColmeias.list(
-            ListOwnedColmeiasQuery(
-                userId = userId,
-                includeLost = includeLost,
-                limit = args.optionalInt("limit") ?: ListOwnedColmeiasQuery.DEFAULT_LIMIT,
-                offset = args.optionalInt("offset") ?: 0,
-            ),
-        )
         return objectMapper.writeValueAsString(
             mapOf(
-                "mode" to "list",
-                "count" to items.size,
-                "items" to items.map { it.toCompactMap() },
+                "code" to detail.code,
+                "species" to detail.speciesCommonName,
+                "status" to detail.statusName,
+                "lastVisit" to lastVisit,
             ),
         )
     }
@@ -199,20 +186,28 @@ class ChatToolExecutor(
         val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
         val code = args.optionalInt("code")
             ?: return errorJson("missing_code", "code is required")
+        val resolved = resolveHive(userId, code, args.optionalString("status"))
+        if (resolved is ResolveHive.Failed) return resolved.errorJson
         val entries = listColmeiaHistory.list(
             ListColmeiaHistoryQuery(
                 userId = userId,
-                code = code,
+                colmeiaId = (resolved as ResolveHive.Ok).value.colmeiaId,
                 limit = args.optionalInt("limit") ?: ListColmeiaHistoryQuery.DEFAULT_LIMIT,
             ),
         )
+        val lines = if (entries.isEmpty()) {
+            listOf(visitFormatter.emptyHistory(code))
+        } else {
+            entries.map { visitFormatter.format(it) }
+        }
         return objectMapper.writeValueAsString(
             mapOf(
                 "code" to code,
                 "count" to entries.size,
+                "lines" to lines,
                 "visits" to entries.map { entry ->
                     mapOf(
-                        "date" to entry.recordedAt.toString(),
+                        "date" to visitFormatter.formatDate(entry),
                         "status" to entry.statusName,
                         "note" to entry.note,
                     )
@@ -276,10 +271,19 @@ class ChatToolExecutor(
                     "Unknown status '$statusRaw'. Valid names: ${resolved.validNames.joinToString()}",
                 )
         }
+        val hiveOutcome = resolveHive(userId, code, args.optionalString("currentStatus"))
+        if (hiveOutcome is ResolveHive.Failed) return hiveOutcome.errorJson
+        val hive = (hiveOutcome as ResolveHive.Ok).value
+        if (hive.inactive && !args.path("confirmed").asBoolean(false)) {
+            return errorJson(
+                "confirmation_required",
+                "A colmeia $code está ${hive.statusName}. Confirme para alterar.",
+            )
+        }
         val updated = recordColmeiaStatus.record(
             RecordColmeiaStatusCommand(
                 userId = userId,
-                code = code,
+                colmeiaId = hive.colmeiaId,
                 statusId = status.id,
                 note = args.optionalString("note"),
             ),
@@ -294,7 +298,10 @@ class ChatToolExecutor(
         }
         val code = args.optionalInt("code")
             ?: return errorJson("missing_code", "code is required")
-        val deleted = deleteColmeia.delete(DeleteColmeiaCommand(userId = userId, code = code))
+        val hiveOutcome = resolveHive(userId, code, args.optionalString("status"))
+        if (hiveOutcome is ResolveHive.Failed) return hiveOutcome.errorJson
+        val hive = (hiveOutcome as ResolveHive.Ok).value
+        val deleted = deleteColmeia.delete(DeleteColmeiaCommand(userId = userId, colmeiaId = hive.colmeiaId))
         return objectMapper.writeValueAsString(
             mapOf(
                 "deleted" to true,
@@ -302,6 +309,32 @@ class ChatToolExecutor(
                 "species" to deleted.speciesCommonName,
                 "status" to deleted.statusName,
             ),
+        )
+    }
+
+    private sealed class ResolveHive {
+        data class Ok(val value: ResolvedColmeia) : ResolveHive()
+        data class Failed(val errorJson: String) : ResolveHive()
+    }
+
+    private fun resolveHive(userId: Long, code: Int, statusRaw: String?): ResolveHive {
+        val statusId = if (statusRaw == null) {
+            null
+        } else {
+            val vocabulary = vocabularyUseCase.list()
+            when (val resolved = ChatVocabularyResolver.resolveStatus(statusRaw, vocabulary.statuses)) {
+                is ChatVocabularyResolver.StatusResolution.Found -> resolved.status.id
+                is ChatVocabularyResolver.StatusResolution.Unknown ->
+                    return ResolveHive.Failed(
+                        errorJson(
+                            "unknown_status",
+                            "Unknown status '$statusRaw'. Valid names: ${resolved.validNames.joinToString()}",
+                        ),
+                    )
+            }
+        }
+        return ResolveHive.Ok(
+            resolveColmeiaId.resolve(ResolveColmeiaQuery(userId = userId, code = code, statusId = statusId)),
         )
     }
 
@@ -391,15 +424,15 @@ class ChatToolExecutor(
     }
 
     private companion object {
-        const val SPECIES_COUNT_THRESHOLD = 10
-
         val COUNT_COLMEIAS_DEF = ToolDefinition(
             name = ChatToolNames.COUNT_COLMEIAS,
             description =
                 "Count the customer's hives (colmeias). Optional species/status filters by vocabulary names " +
-                    "(common name or abbreviation for species; status name). Match the user's words via " +
-                    "list_vocabulary first. Never invent names or pass numeric ids. Optional groupBy SPECIES " +
-                    "and/or STATUS for breakdowns. Numbers and labels in the tool JSON are authoritative — restate them.",
+                    "(common name or abbreviation for species; status name). A named status, including " +
+                    "vendida or perdida, counts only that status: total is that count, and the default " +
+                    "exclusion does not apply. Pass vendidas as vendida. Omit groupBy for a single-status " +
+                    "question. On unknown_status do not retry without the status. Never invent names or pass " +
+                    "numeric ids. Numbers and labels in the tool JSON are authoritative — restate them.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -433,28 +466,24 @@ class ChatToolExecutor(
             ),
         )
 
-        val LIST_COLMEIAS_DEF = ToolDefinition(
-            name = ChatToolNames.LIST_COLMEIAS,
+        val DETAIL_COLMEIA_DEF = ToolDefinition(
+            name = ChatToolNames.DETAIL_COLMEIA,
             description =
-                "List the customer's colmeias (code, species common name, status). " +
-                    "If the customer has more than 10 hives, returns per-species counts instead of a row list. " +
-                    "Excludes perdida and vendida by default.",
+                "Detalhar one hive: code, species common name, current status, and last visit. " +
+                    "The user gives a code; this tool resolves it to one hive. Prefer the active hive " +
+                    "when the code has one. Optional status selects the inactive hive that shares the " +
+                    "code with a live one. A read does not ask for confirmation. Never pass numeric ids. " +
+                    "Do not say listar.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
-                    "includeLost" to mapOf(
-                        "type" to "boolean",
-                        "description" to "If true, include hives currently status perdida or vendida",
-                    ),
-                    "limit" to mapOf(
-                        "type" to listOf("integer", "null"),
-                        "description" to "Max items when listing rows (1-50, default 20)",
-                    ),
-                    "offset" to mapOf(
-                        "type" to listOf("integer", "null"),
-                        "description" to "Pagination offset (default 0)",
+                    "code" to mapOf("type" to "integer", "description" to "Hive code"),
+                    "status" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to "Current status name only when selecting the inactive hive that shares the code",
                     ),
                 ),
+                "required" to listOf("code"),
                 "additionalProperties" to false,
             ),
         )
@@ -462,15 +491,16 @@ class ChatToolExecutor(
         val LIST_COLMEIA_HISTORY_DEF = ToolDefinition(
             name = ChatToolNames.LIST_COLMEIA_HISTORY,
             description =
-                "Last N field visits / status observations for one owned hive by code " +
-                    "(date, status name, optional note). Newest first. Prefer this when the user asks " +
-                    "for histórico / últimas visitas of a code. Does not include source or visit-time " +
-                    "overrides. Membership-scoped; if a code was reused after perdida/vendida, uses the " +
-                    "active hive. Never pass numeric ids.",
+                "Last N field visits (histórico) for one hive by code (date, status, optional note). Newest first. " +
+                    "Prefer the active hive when the code has one. Paste the lines array. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
                     "code" to mapOf("type" to "integer", "description" to "Hive code"),
+                    "status" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to "Current status name only when selecting the inactive hive that shares the code",
+                    ),
                     "limit" to mapOf(
                         "type" to listOf("integer", "null"),
                         "description" to "Max visits to return (1-50, default 10)",
@@ -515,12 +545,12 @@ class ChatToolExecutor(
         val UPDATE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.UPDATE_COLMEIA,
             description =
-                "Acompanhamento/visita: record a field visit or status observation for an owned active hive. " +
-                    "Identify by code (exactly one active hive; perdida/vendida with that code are ignored). " +
-                    "Always appends historico (including same-status confirmations). status (name) required; " +
-                    "optional short note only if the user supplied one (otherwise null). Do not pass visit " +
-                    "timestamps. Prefer perdida/vendida over delete when the hive left the yard for real; " +
-                    "marking them frees the code for reuse. Species, meliponário, and startDate stay fixed. " +
+                "Record a field visit on one hive. The user gives a code; the write uses the resolved hive id. " +
+                    "Prefer the active hive. A stated status on an active hive, including perdida or vendida, " +
+                    "is recorded in the same turn with no confirmation. When the resolved hive is already " +
+                    "inactive, ask once naming that status and call again with confirmed=true. Historico is " +
+                    "appended by the use case, including when the status did not change; that is not a question. " +
+                    "Do not call create_colmeia for a status change. Do not prefer this tool over delete. " +
                     "Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
@@ -535,6 +565,15 @@ class ChatToolExecutor(
                         "description" to
                             "Optional short field remark only if the user supplied one; otherwise null",
                     ),
+                    "currentStatus" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to
+                            "Current status name only when the user means the inactive hive that shares the code with an active one",
+                    ),
+                    "confirmed" to mapOf(
+                        "type" to "boolean",
+                        "description" to "True only after the user confirmed a change to an already inactive hive",
+                    ),
                 ),
                 "required" to listOf("code", "status"),
                 "additionalProperties" to false,
@@ -544,15 +583,18 @@ class ChatToolExecutor(
         val DELETE_COLMEIA_DEF = ToolDefinition(
             name = ChatToolNames.DELETE_COLMEIA,
             description =
-                "Cadastro: permanently delete an owned active hive by code (hard delete, irreversible). " +
-                    "Use only for registry mistakes (never existed / wrong entry). Prefer update_colmeia to " +
-                    "perdida or vendida when the hive left the yard for real. Exactly one active hive for " +
-                    "that code; perdida/vendida with the same code are ignored. Only call after the user " +
-                    "explicitly confirmed. Pass confirmed=true.",
+                "Permanently delete one hive. Prefer the active hive for the code. A perdida or vendida hive " +
+                    "can be deleted: ask once, naming that status, then call with confirmed=true. " +
+                    "Optional status selects that inactive hive when an active hive shares the code. " +
+                    "Do not redirect excluir into perdida or vendida. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
                     "code" to mapOf("type" to "integer", "description" to "Hive code to delete"),
+                    "status" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to "Current status name when deleting the inactive hive that shares the code",
+                    ),
                     "confirmed" to mapOf(
                         "type" to "boolean",
                         "description" to "Must be true after user confirmed this final delete",

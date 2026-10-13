@@ -1,9 +1,7 @@
 package com.bombus.colmeia.application.port.inbound
 
 /**
- * Hard-delete an owned hive by code — must match exactly one **active** hive
- * (perdida/vendida rows with the same code are ignored and never deleted).
- * Callers (chat tools) must obtain user confirmation first.
+ * Hard-delete one owned hive by id. The caller resolves the user's code to that id first.
  */
 interface DeleteColmeiaUseCase {
     fun delete(command: DeleteColmeiaCommand): DeletedColmeia
@@ -11,7 +9,7 @@ interface DeleteColmeiaUseCase {
 
 data class DeleteColmeiaCommand(
     val userId: Long,
-    val code: Int,
+    val colmeiaId: Long,
 )
 
 data class DeletedColmeia(

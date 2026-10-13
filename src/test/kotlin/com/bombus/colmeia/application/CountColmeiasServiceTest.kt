@@ -173,6 +173,32 @@ class CountColmeiasServiceTest {
     }
 
     @Test
+    fun `groupBy STATUS with an explicit vendida status stays include-only`() {
+        val port = RecordingCountPort(perStatus = emptyList())
+        val service = service(port)
+
+        service.count(
+            CountColmeiasQuery(userId = OWNER, statusId = vendidaId, groupBy = setOf(CountDimension.STATUS)),
+        )
+
+        assertEquals(vendidaId, port.lastFilter?.includeStatusId)
+        assertTrue(port.lastFilter?.excludeStatusIds?.isEmpty() == true)
+    }
+
+    @Test
+    fun `groupBy SPECIES with an explicit vendida status stays include-only`() {
+        val port = RecordingCountPort(perSpecies = emptyList())
+        val service = service(port)
+
+        service.count(
+            CountColmeiasQuery(userId = OWNER, statusId = vendidaId, groupBy = setOf(CountDimension.SPECIES)),
+        )
+
+        assertEquals(vendidaId, port.lastFilter?.includeStatusId)
+        assertTrue(port.lastFilter?.excludeStatusIds?.isEmpty() == true)
+    }
+
+    @Test
     fun `breakdown by both dimensions populates both lists`() {
         val species = listOf(SpeciesCount(speciesId = 1, abbreviation = "JT", commonName = "Jataí", count = 4))
         val statuses = listOf(StatusCount(statusId = 3, statusName = "estavel", count = 4))
