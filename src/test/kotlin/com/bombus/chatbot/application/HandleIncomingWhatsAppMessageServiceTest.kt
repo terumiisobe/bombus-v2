@@ -23,6 +23,8 @@ import com.bombus.colmeia.application.port.inbound.CreateColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryQuery
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
+import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
+import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.DetailColmeiaQuery
 import com.bombus.colmeia.application.port.inbound.DetailColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.ResolveColmeiaIdUseCase
@@ -251,6 +253,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
     ): HandleIncomingWhatsAppMessageService {
         val toolExecutor = ChatToolExecutor(
             countColmeias = count,
+            listOwnedColmeias = NoopListOwned,
             vocabularyUseCase = FakeVocabulary,
             resolveColmeiaId = NoopResolve,
             detailColmeia = NoopDetail,
@@ -332,6 +335,10 @@ class HandleIncomingWhatsAppMessageServiceTest {
 
     private object NoopListHistory : ListColmeiaHistoryUseCase {
         override fun list(query: ListColmeiaHistoryQuery): List<ColmeiaStatusHistoryEntry> = emptyList()
+    }
+
+    private object NoopListOwned : ListOwnedColmeiasUseCase {
+        override fun list(query: ListOwnedColmeiasQuery): List<ColmeiaSummary> = emptyList()
     }
 
     private object NoopCreate : CreateColmeiaUseCase {

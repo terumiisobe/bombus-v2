@@ -9,6 +9,7 @@ import com.bombus.colmeia.application.port.outbound.ColmeiaVocabularyPort
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
 import com.bombus.colmeia.application.port.outbound.StatusColmeiaLookupPort
 import com.bombus.colmeia.domain.ColmeiaCommandError
+import com.bombus.colmeia.domain.ColmeiaCountFilter
 import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.SpeciesRef
@@ -102,6 +103,19 @@ class ColmeiaCrudServicesTest {
 
         service.list(ListOwnedColmeiasQuery(userId = 1L, includeLost = true))
         assertEquals(emptySet(), port.lastExcludeStatusIds)
+    }
+
+    @Test
+    fun `list with statusId includes only that status and ignores default exclusion`() {
+        val port = FakeOwnedPort()
+        val service = ListOwnedColmeiasService(port, FakeStatusLookup, properties)
+
+        service.list(ListOwnedColmeiasQuery(userId = 1L, statusId = STATUS_VENDIDA, speciesId = 2L, limit = 20))
+
+        assertEquals(
+            ColmeiaCountFilter(speciesId = 2L, includeStatusId = STATUS_VENDIDA),
+            port.lastFilter,
+        )
     }
 
     @Test
@@ -305,7 +319,9 @@ class ColmeiaCrudServicesTest {
         var meliponarioIds: List<Long> = emptyList()
         var activeCodes: MutableSet<Int> = mutableSetOf()
         var releasingCodes: MutableSet<Int> = mutableSetOf()
-        var lastExcludeStatusIds: Set<Long> = emptySet()
+        var lastFilter: ColmeiaCountFilter? = null
+        val lastExcludeStatusIds: Set<Long>
+            get() = lastFilter?.excludeStatusIds.orEmpty()
         val byId = mutableMapOf<Long, ColmeiaSummary>()
         val byCode = mutableMapOf<Int, List<ColmeiaSummary>>()
         val inserts = mutableListOf<ColmeiaSummary>()
@@ -318,11 +334,11 @@ class ColmeiaCrudServicesTest {
 
         override fun listByOwner(
             userId: Long,
-            excludeStatusIds: Collection<Long>,
+            filter: ColmeiaCountFilter,
             limit: Int,
             offset: Int,
         ): List<ColmeiaSummary> {
-            lastExcludeStatusIds = excludeStatusIds.toSet()
+            lastFilter = filter
             return emptyList()
         }
 

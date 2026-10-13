@@ -16,6 +16,8 @@ import com.bombus.colmeia.application.port.inbound.DetailColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryQuery
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
+import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
+import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
 import com.bombus.colmeia.application.port.inbound.ResolveColmeiaIdUseCase
@@ -39,6 +41,7 @@ import java.time.Instant
 @Component
 class ChatToolExecutor(
     private val countColmeias: CountColmeiasUseCase,
+    private val listOwnedColmeias: ListOwnedColmeiasUseCase,
     private val vocabularyUseCase: ListColmeiaVocabularyUseCase,
     private val resolveColmeiaId: ResolveColmeiaIdUseCase,
     private val detailColmeia: DetailColmeiaUseCase,
@@ -53,6 +56,7 @@ class ChatToolExecutor(
 
     fun definitions(): List<ToolDefinition> = listOf(
         COUNT_COLMEIAS_DEF,
+        SAMPLE_COLMEIAS_DEF,
         LIST_VOCABULARY_DEF,
         DETAIL_COLMEIA_DEF,
         LIST_COLMEIA_HISTORY_DEF,
@@ -65,6 +69,7 @@ class ChatToolExecutor(
         val contentJson = try {
             when (call.name) {
                 ChatToolNames.COUNT_COLMEIAS -> executeCount(userId, call.argumentsJson)
+                ChatToolNames.SAMPLE_COLMEIAS -> executeSample(userId, call.argumentsJson)
                 ChatToolNames.LIST_VOCABULARY -> executeListVocabulary()
                 ChatToolNames.DETAIL_COLMEIA -> executeDetail(userId, call.argumentsJson)
                 ChatToolNames.LIST_COLMEIA_HISTORY -> executeListHistory(userId, call.argumentsJson)
@@ -138,6 +143,50 @@ class ChatToolExecutor(
                 )
             }
         }
+        return objectMapper.writeValueAsString(payload)
+    }
+
+    private fun executeSample(userId: Long, argumentsJson: String): String {
+        val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
+        val vocabulary = vocabularyUseCase.list()
+        val speciesOutcome = resolveOptionalSpecies(args.optionalString("species"), vocabulary)
+        if (speciesOutcome is ResolveOutcome.Failed) return speciesOutcome.errorJson
+        val statusOutcome = resolveOptionalStatus(args.optionalString("status"), vocabulary)
+        if (statusOutcome is ResolveOutcome.Failed) return statusOutcome.errorJson
+        val speciesRef = (speciesOutcome as ResolveOutcome.Ok).value
+        val statusRef = (statusOutcome as ResolveOutcome.Ok).value
+        val limit = args.optionalInt("limit") ?: ListOwnedColmeiasQuery.DEFAULT_LIMIT
+
+        val items = listOwnedColmeias.list(
+            ListOwnedColmeiasQuery(
+                userId = userId,
+                speciesId = speciesRef?.id,
+                statusId = statusRef?.id,
+                limit = limit,
+            ),
+        )
+        val total = countColmeias.count(
+            CountColmeiasQuery(
+                userId = userId,
+                speciesId = speciesRef?.id,
+                statusId = statusRef?.id,
+            ),
+        ).total
+
+        val payload = linkedMapOf<String, Any?>(
+            "total" to total,
+            "returned" to items.size,
+            "limit" to limit,
+            "truncated" to (total > items.size),
+            "species" to speciesRef?.commonName,
+            "speciesScientificName" to speciesRef?.scientificName,
+            "speciesAbbreviation" to speciesRef?.abbreviation,
+            "status" to statusRef?.name,
+            "excludedStatusLabel" to if (statusRef == null) countProperties.excludedStatusLabel() else null,
+            "items" to items.map { hive ->
+                hive.toCompactMap(scientificNameForCommonName(hive.speciesCommonName))
+            },
+        )
         return objectMapper.writeValueAsString(payload)
     }
 
@@ -458,7 +507,8 @@ class ChatToolExecutor(
                     "status: total is that count, and the default exclusion does not apply. Pass vendidas as " +
                     "vendida. Omit groupBy for a single-status question. On unknown_status do not retry " +
                     "without the status. Never invent names, hive rows, or numeric ids. Numbers and labels " +
-                    "in the tool JSON are authoritative — restate them.",
+                    "in the tool JSON are authoritative — restate them. For quais / which hives after a " +
+                    "count, call sample_colmeias — do not invent rows.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -474,6 +524,34 @@ class ChatToolExecutor(
                         "type" to "array",
                         "items" to mapOf("type" to "string", "enum" to listOf("SPECIES", "STATUS")),
                         "description" to "Optional breakdown dimensions",
+                    ),
+                ),
+                "additionalProperties" to false,
+            ),
+        )
+
+        val SAMPLE_COLMEIAS_DEF = ToolDefinition(
+            name = ChatToolNames.SAMPLE_COLMEIAS,
+            description =
+                "Bounded sample of hives matching optional species/status filters (same filter rules as " +
+                    "count_colmeias). Use when the user asks quais / which hives match a filter — especially " +
+                    "after a count. Returns code, species (common + scientific), and status per row. Hard " +
+                    "cap (default 20, max 50); never invent rows. Not for one hive (use detail_colmeia) and " +
+                    "not a substitute for count_colmeias totals. Never pass numeric ids.",
+            parametersJsonSchema = mapOf(
+                "type" to "object",
+                "properties" to mapOf(
+                    "species" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to "Species common name (pt-BR) or abbreviation from list_vocabulary, or null",
+                    ),
+                    "status" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to "Status name from list_vocabulary, or null",
+                    ),
+                    "limit" to mapOf(
+                        "type" to listOf("integer", "null"),
+                        "description" to "Max rows to return (1-50, default 20)",
                     ),
                 ),
                 "additionalProperties" to false,

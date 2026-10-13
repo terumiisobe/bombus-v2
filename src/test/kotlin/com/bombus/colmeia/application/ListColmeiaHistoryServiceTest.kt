@@ -72,7 +72,7 @@ class ListColmeiaHistoryServiceTest {
         var lastLimit: Int? = null
 
         override fun listMeliponarioIdsByOwner(userId: Long) = emptyList<Long>()
-        override fun listByOwner(userId: Long, excludeStatusIds: Collection<Long>, limit: Int, offset: Int) =
+        override fun listByOwner(userId: Long, filter: com.bombus.colmeia.domain.ColmeiaCountFilter, limit: Int, offset: Int) =
             emptyList<ColmeiaSummary>()
         override fun findByCodeForOwner(userId: Long, code: Int) = emptyList<ColmeiaSummary>()
         override fun findByIdForOwner(userId: Long, colmeiaId: Long) = hive?.takeIf { it.id == colmeiaId }

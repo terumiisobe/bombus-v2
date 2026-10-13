@@ -1,6 +1,7 @@
 package com.bombus.colmeia.adapter.outbound.persistence
 
 import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
+import com.bombus.colmeia.domain.ColmeiaCountFilter
 import com.bombus.config.BombusApplication
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -76,7 +77,7 @@ class OwnedColmeiaAdapterIntegrationTest {
         )
         assertThat(reused.code).isEqualTo(1)
         assertThat(reused.id).isNotEqualTo(first.id)
-        assertThat(adapter.listByOwner(OWNER, excludeStatusIds = emptyList(), limit = 20, offset = 0))
+        assertThat(adapter.listByOwner(OWNER, ColmeiaCountFilter(), limit = 20, offset = 0))
             .extracting("id")
             .containsExactly(reused.id)
     }
@@ -140,13 +141,30 @@ class OwnedColmeiaAdapterIntegrationTest {
 
         val listed = adapter.listByOwner(
             OWNER,
-            excludeStatusIds = listOf(perdidaId, vendidaId),
+            ColmeiaCountFilter(excludeStatusIds = setOf(perdidaId, vendidaId)),
             limit = 20,
             offset = 0,
         )
 
         assertThat(listed).extracting("id").containsExactly(living.id, 99L)
         assertThat(listed).extracting("id").doesNotContain(lost.id, sold.id)
+    }
+
+    @Test
+    fun `list includeStatusId returns only that status within limit`() {
+        val soldA = adapter.insert(10, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), vendidaId, OWNER)
+        val soldB = adapter.insert(20, 2, MEL, Instant.parse("2026-01-01T00:00:00Z"), vendidaId, OWNER)
+        adapter.insert(30, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), desenvolvendoId, OWNER)
+
+        val listed = adapter.listByOwner(
+            OWNER,
+            ColmeiaCountFilter(includeStatusId = vendidaId),
+            limit = 50,
+            offset = 0,
+        )
+
+        assertThat(listed).extracting("id").containsExactly(soldA.id, soldB.id)
+        assertThat(listed).extracting("statusName").containsOnly("vendida")
     }
 
     @Test
@@ -378,7 +396,7 @@ class OwnedColmeiaAdapterIntegrationTest {
 
         assertThat(adapter.findByCodeForOwner(OWNER, 2)).hasSize(1)
         assertThat(adapter.findByCodeForOwner(OTHER, 2)).hasSize(1)
-        assertThat(adapter.listByOwner(OWNER, emptyList(), 20, 0)).hasSize(1)
+        assertThat(adapter.listByOwner(OWNER, ColmeiaCountFilter(), 20, 0)).hasSize(1)
         assertThat(adapter.deleteByIdForOwner(OTHER, adapter.findByCodeForOwner(OWNER, 2).first().id)).isFalse()
     }
 
@@ -389,7 +407,7 @@ class OwnedColmeiaAdapterIntegrationTest {
         val hive = adapter.insert(3, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId, OWNER)
 
         assertThat(adapter.findByCodeForOwner(MEMBER, 3)).extracting("id").containsExactly(hive.id)
-        assertThat(adapter.listByOwner(MEMBER, emptyList(), 20, 0)).extracting("id").containsExactly(hive.id)
+        assertThat(adapter.listByOwner(MEMBER, ColmeiaCountFilter(), 20, 0)).extracting("id").containsExactly(hive.id)
         assertThat(adapter.deleteByIdForOwner(MEMBER, hive.id)).isTrue()
         assertThat(colmeiaCount(hive.id)).isEqualTo(0L)
     }
@@ -416,7 +434,7 @@ class OwnedColmeiaAdapterIntegrationTest {
         )
 
         assertThat(adapter.findByCodeForOwner(MEMBER, 4)).isEmpty()
-        assertThat(adapter.listByOwner(MEMBER, emptyList(), 20, 0)).isEmpty()
+        assertThat(adapter.listByOwner(MEMBER, ColmeiaCountFilter(), 20, 0)).isEmpty()
         assertThat(adapter.findByCodeForOwner(OWNER, 4)).extracting("id").containsExactly(hive.id)
     }
 
@@ -450,7 +468,7 @@ class OwnedColmeiaAdapterIntegrationTest {
 
         assertThat(adapter.listMeliponarioIdsByOwner(OWNER)).containsExactly(MEL)
         assertThat(adapter.findByCodeForOwner(OWNER, 5)).isEmpty()
-        assertThat(adapter.listByOwner(OWNER, emptyList(), 20, 0)).extracting("id").doesNotContain(hive.id)
+        assertThat(adapter.listByOwner(OWNER, ColmeiaCountFilter(), 20, 0)).extracting("id").doesNotContain(hive.id)
         assertThat(adapter.deleteByIdForOwner(OWNER, hive.id)).isFalse()
         assertThat(colmeiaCount(hive.id)).isEqualTo(1L)
     }

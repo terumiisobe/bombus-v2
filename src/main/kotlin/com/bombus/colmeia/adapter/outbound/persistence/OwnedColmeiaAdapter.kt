@@ -2,6 +2,7 @@ package com.bombus.colmeia.adapter.outbound.persistence
 
 import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
+import com.bombus.colmeia.domain.ColmeiaCountFilter
 import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import org.springframework.jdbc.core.RowMapper
@@ -26,7 +27,7 @@ class OwnedColmeiaAdapter(
 
     override fun listByOwner(
         userId: Long,
-        excludeStatusIds: Collection<Long>,
+        filter: ColmeiaCountFilter,
         limit: Int,
         offset: Int,
     ): List<ColmeiaSummary> =
@@ -34,8 +35,10 @@ class OwnedColmeiaAdapter(
             LIST_SQL,
             MapSqlParameterSource()
                 .addValue("userId", userId)
-                .addValue("hasExclude", excludeStatusIds.isNotEmpty())
-                .addValue("excludeStatusIds", excludeStatusIds.ifEmpty { listOf(-1L) })
+                .addValue("speciesId", filter.speciesId)
+                .addValue("includeStatusId", filter.includeStatusId)
+                .addValue("hasExclude", filter.excludeStatusIds.isNotEmpty())
+                .addValue("excludeStatusIds", filter.excludeStatusIds.ifEmpty { listOf(-1L) })
                 .addValue("limit", limit)
                 .addValue("offset", offset),
             SUMMARY_MAPPER,
@@ -202,9 +205,12 @@ class OwnedColmeiaAdapter(
         """.trimIndent()
 
         // Keep "sem status" (NULL) when excluding; NOT IN alone would drop NULL rows.
+        // Species / include-status filters match ColmeiaCountAdapter.
         val LIST_SQL = """
             $SUMMARY_SELECT
             WHERE $ACCESSIBLE_COLMEIA
+              AND (CAST(:speciesId AS BIGINT) IS NULL OR c.species_id = CAST(:speciesId AS BIGINT))
+              AND (CAST(:includeStatusId AS BIGINT) IS NULL OR cur.status_id = CAST(:includeStatusId AS BIGINT))
               AND (
                 CAST(:hasExclude AS BOOLEAN) = FALSE
                 OR cur.status_id IS NULL

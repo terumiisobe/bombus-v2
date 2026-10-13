@@ -12,6 +12,8 @@ import com.bombus.colmeia.application.port.inbound.DeletedColmeia
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryQuery
 import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
+import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
+import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
 import com.bombus.colmeia.application.port.inbound.DetailColmeiaQuery
 import com.bombus.colmeia.application.port.inbound.DetailColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.ResolveColmeiaIdUseCase
@@ -31,6 +33,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -38,6 +41,7 @@ class ChatToolExecutorTest {
 
     private val objectMapper = jacksonObjectMapper()
     private val count = RecordingCount(ColmeiaCount(total = 0))
+    private val sample = RecordingListOwned()
     private val resolve = RecordingResolve()
     private val detail = RecordingDetail()
     private val listHistory = RecordingHistory()
@@ -46,6 +50,7 @@ class ChatToolExecutorTest {
     private val delete = RecordingDelete()
     private val executor = ChatToolExecutor(
         countColmeias = count,
+        listOwnedColmeias = sample,
         vocabularyUseCase = FakeVocabulary,
         resolveColmeiaId = resolve,
         detailColmeia = detail,
@@ -569,11 +574,74 @@ class ChatToolExecutorTest {
     }
 
     @Test
+    fun `sample_colmeias returns bounded items with scientific names and truncated flag`() {
+        count.result = ColmeiaCount(total = 3)
+        sample.items = listOf(
+            SAMPLE.copy(id = 1, code = 12345, speciesId = 1, speciesCommonName = "Jataí", statusId = 6, statusName = "vendida"),
+            SAMPLE.copy(id = 2, code = 12345, speciesId = 8, speciesAbbreviation = "TB", speciesCommonName = "Tubuna", statusId = 6, statusName = "vendida"),
+            SAMPLE.copy(id = 3, code = 20000, speciesId = 4, speciesAbbreviation = "MQ", speciesCommonName = "Mandaçaia", statusId = 6, statusName = "vendida"),
+        )
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_sample",
+                name = ChatToolNames.SAMPLE_COLMEIAS,
+                argumentsJson = """{"status":"vendida"}""",
+            ),
+        )
+
+        assertEquals(
+            ListOwnedColmeiasQuery(userId = 42L, statusId = 6L, limit = ListOwnedColmeiasQuery.DEFAULT_LIMIT),
+            sample.lastQuery,
+        )
+        assertEquals(CountColmeiasQuery(userId = 42L, statusId = 6L), count.lastQuery)
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals(3, json.path("total").asLong())
+        assertEquals(3, json.path("returned").asInt())
+        assertEquals(20, json.path("limit").asInt())
+        assertFalse(json.path("truncated").asBoolean())
+        assertEquals("vendida", json.path("status").asText())
+        assertTrue(json.path("excludedStatusLabel").isNull)
+        assertEquals(3, json.path("items").size())
+        assertEquals(12345, json.path("items").path(0).path("code").asInt())
+        assertEquals("Jataí", json.path("items").path(0).path("species").asText())
+        assertEquals("Tetragonisca angustula", json.path("items").path(0).path("speciesScientificName").asText())
+        assertEquals("vendida", json.path("items").path(0).path("status").asText())
+        assertEquals("Tubuna", json.path("items").path(1).path("species").asText())
+        assertEquals("Scaptotrigona bipunctata", json.path("items").path(1).path("speciesScientificName").asText())
+        assertEquals(20000, json.path("items").path(2).path("code").asInt())
+        assertEquals("Mandaçaia", json.path("items").path(2).path("species").asText())
+        assertTrue(json.path("items").path(0).path("id").isMissingNode)
+    }
+
+    @Test
+    fun `sample_colmeias marks truncated when total exceeds returned`() {
+        count.result = ColmeiaCount(total = 25)
+        sample.items = listOf(SAMPLE, SAMPLE.copy(id = 101, code = 8))
+        val result = executor.execute(
+            userId = 9L,
+            call = AssistantToolCall(
+                id = "call_trunc",
+                name = ChatToolNames.SAMPLE_COLMEIAS,
+                argumentsJson = """{"limit":2}""",
+            ),
+        )
+
+        assertEquals(ListOwnedColmeiasQuery(userId = 9L, limit = 2), sample.lastQuery)
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals(25, json.path("total").asLong())
+        assertEquals(2, json.path("returned").asInt())
+        assertTrue(json.path("truncated").asBoolean())
+        assertEquals("perdida, vendida", json.path("excludedStatusLabel").asText())
+    }
+
+    @Test
     fun `definitions expose name-based species and status params`() {
         val names = executor.definitions().map { it.name }
         assertEquals(
             listOf(
                 ChatToolNames.COUNT_COLMEIAS,
+                ChatToolNames.SAMPLE_COLMEIAS,
                 ChatToolNames.LIST_VOCABULARY,
                 ChatToolNames.DETAIL_COLMEIA,
                 ChatToolNames.LIST_COLMEIA_HISTORY,
@@ -665,6 +733,17 @@ class ChatToolExecutorTest {
         override fun count(query: CountColmeiasQuery): ColmeiaCount {
             lastQuery = query
             return result
+        }
+    }
+
+    private class RecordingListOwned : ListOwnedColmeiasUseCase {
+        var items: List<ColmeiaSummary> = emptyList()
+        var lastQuery: ListOwnedColmeiasQuery? = null
+            private set
+
+        override fun list(query: ListOwnedColmeiasQuery): List<ColmeiaSummary> {
+            lastQuery = query
+            return items
         }
     }
 
