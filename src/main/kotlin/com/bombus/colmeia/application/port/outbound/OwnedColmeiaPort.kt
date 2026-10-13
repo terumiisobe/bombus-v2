@@ -65,6 +65,7 @@ interface OwnedColmeiaPort {
         meliponarioId: Long,
         startDate: Instant?,
         initialStatusId: Long,
+        recordedByUserId: Long,
     ): ColmeiaSummary
 
     fun appendStatus(append: AppendColmeiaStatus): ColmeiaSummary?

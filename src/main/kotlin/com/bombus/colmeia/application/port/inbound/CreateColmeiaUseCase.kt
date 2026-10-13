@@ -11,9 +11,10 @@ interface CreateColmeiaUseCase {
  * Field contract (create):
  * - speciesId: user (required)
  * - statusId: user optional; default "desenvolvendo"
- * - code: user optional; otherwise null (no auto-assign)
- * - startDate: user optional; otherwise null
+ * - code: user optional; otherwise null (no auto-assign). Chat requires confirm before null-code create.
+ * - startDate: user optional; when null, [CreateColmeiaService] defaults to now
  * - meliponarioId: derived; the lowest-id meliponário the user is a member of
+ * - userId: creating actor; seed historico recorded_by_user_id
  * - id: generated
  */
 data class CreateColmeiaCommand(

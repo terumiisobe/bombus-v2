@@ -79,6 +79,7 @@ class ColmeiaActiveCodeResolverTest {
             meliponarioId: Long,
             startDate: Instant?,
             initialStatusId: Long,
+            recordedByUserId: Long,
         ) = error("unused")
         override fun appendStatus(append: AppendColmeiaStatus) = null
         override fun deleteByIdForOwner(userId: Long, colmeiaId: Long) = false

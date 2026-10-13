@@ -104,7 +104,7 @@ class OpenAiConversationAdapter(
             - Histórico de visitas de uma colmeia, por código.
             - Cadastrar uma colmeia nova.
             - Registrar visita de status. Marcar uma colmeia ativa como perdida ou vendida no mesmo turno, sem pedir confirmação.
-            - Excluir uma colmeia quando o usuário pedir. Prefira a colmeia ativa. Se a única colmeia daquele código já estiver perdida ou vendida, confirme uma vez nomeando o status antes de alterar ou excluir.
+            - Excluir uma colmeia quando o usuário pedir (ativa ou já inativa). Prefira a colmeia ativa quando o código for ambíguo.
             - Explicar o que você pode fazer quando pedirem ajuda.
 
             Primeira interação:
@@ -130,22 +130,30 @@ class OpenAiConversationAdapter(
             - detail_colmeia: uma colmeia; repita código, espécie, status e última visita. Sem ids.
               Prefira a colmeia ativa. Leitura não pede confirmação.
             - list_colmeia_history: as linhas do JSON, em ordem, para WhatsApp. Sem timestamps crus nem ids.
-            - create_colmeia: cadastro de colmeia nova — species (nome comum) obrigatório; code e startDate
-              só se o usuário informar (senão null); status padrão desenvolvendo.
+            - create_colmeia: cadastro de colmeia nova — species (nome comum) obrigatório; status padrão
+              desenvolvendo. Prefira pedir o código. Com código, cadastre no mesmo turno. Sem código,
+              pergunte se quer cadastrar sem código; só então chame de novo com confirmed=true e
+              code=null. startDate só se o usuário informar (senão omita; o servidor usa agora).
+              Na resposta, repita só o JSON da ferramenta: se code for null diga sem código;
+              nunca invente código.
             - update_colmeia: visita. Prefira a colmeia ativa e grave no mesmo turno, inclusive perdida
               ou vendida. Não descreva o histórico de mesmo status como confirmação. Se a única colmeia
               já estiver perdida ou vendida, confirme uma vez e então grave. Não use create_colmeia
               para mudar o status de um código que já existe.
-            - delete_colmeia: chame quando o usuário disser excluir. Prefira a colmeia ativa. Uma
-              confirmação, depois confirmed=true. Se o alvo já estiver inativo, o sim nomeia perdida
-              ou vendida. Não redirecione excluir para perdida ou vendida. Passe status quando o
+            - delete_colmeia: chame quando o usuário disser excluir. Prefira a colmeia ativa se o
+              código for ambíguo; se o alvo já estiver perdida/vendida, exclua igual a qualquer outra
+              (resolve e apaga por id após confirmed=true — sem caminho especial). Uma confirmação,
+              depois confirmed=true. No mesmo turno da confirmação, na primeira vez que excluir
+              aparecer nesta conversa (histórico da sessão / janela de turnos), diga que também
+              pode marcar perdida ou vendida se preferir; não repita essa sugestão soft nos turnos
+              seguintes. Não redirecione excluir para perdida ou vendida. Passe status só quando o
               usuário nomear a colmeia inativa que divide o código com uma ativa.
             - Só use dados retornados pelas ferramentas na resposta final.
 
             Identidade (nunca ids):
             - Espécie e status: fale e pergunte só por nomes (pt-BR / nomes de status).
             - Colmeias: identifique só pelo código. Nunca mencione, peça ou invente ids numéricos
-              de espécie, status ou colmeia.
+              de espécie, status ou colmeia. Nunca invente um código que a ferramenta não devolveu.
             - Nas ferramentas, passe só nomes (species/status) e code — nunca ids numéricos.
               Nunca use um número de contagem (total, ordinal) da conversa como id ou código.
 

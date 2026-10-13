@@ -59,6 +59,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             meliponarioId = MEL,
             startDate = Instant.parse("2026-01-01T00:00:00Z"),
             initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
         )
         assertThat(adapter.isCodeTaken(MEL, 1)).isTrue()
 
@@ -71,6 +72,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             meliponarioId = MEL,
             startDate = null,
             initialStatusId = estavelId,
+            recordedByUserId = OWNER,
         )
         assertThat(reused.code).isEqualTo(1)
         assertThat(reused.id).isNotEqualTo(first.id)
@@ -87,6 +89,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             meliponarioId = MEL,
             startDate = Instant.parse("2026-01-01T00:00:00Z"),
             initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
         )
         assertThat(adapter.isCodeTaken(MEL, 9)).isTrue()
 
@@ -97,7 +100,7 @@ class OwnedColmeiaAdapterIntegrationTest {
         assertThat(lost.code).isEqualTo(9)
         assertThat(adapter.isCodeTaken(MEL, 9, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
-        val reused = adapter.insert(9, 2, MEL, null, estavelId)
+        val reused = adapter.insert(9, 2, MEL, null, estavelId, OWNER)
         assertThat(reused.code).isEqualTo(9)
         assertThat(reused.id).isNotEqualTo(first.id)
         assertThat(adapter.findByCodeForOwner(OWNER, 9)).hasSize(2)
@@ -111,6 +114,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             meliponarioId = MEL,
             startDate = Instant.parse("2026-01-01T00:00:00Z"),
             initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
         )
         val sold = adapter.appendStatus(
             AppendColmeiaStatus(first.id, vendidaId, Instant.now().plusSeconds(60)),
@@ -118,7 +122,7 @@ class OwnedColmeiaAdapterIntegrationTest {
         assertThat(sold.code).isEqualTo(8)
         assertThat(adapter.isCodeTaken(MEL, 8, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
-        val reused = adapter.insert(8, 2, MEL, null, estavelId)
+        val reused = adapter.insert(8, 2, MEL, null, estavelId, OWNER)
         assertThat(reused.code).isEqualTo(8)
         assertThat(adapter.findByCodeForOwner(OWNER, 8)).extracting("id")
             .containsExactlyInAnyOrder(first.id, reused.id)
@@ -126,9 +130,9 @@ class OwnedColmeiaAdapterIntegrationTest {
 
     @Test
     fun `list excludes multiple statuses while keeping sem status`() {
-        val living = adapter.insert(1, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), desenvolvendoId)
-        val lost = adapter.insert(2, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), perdidaId)
-        val sold = adapter.insert(3, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), vendidaId)
+        val living = adapter.insert(1, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), desenvolvendoId, OWNER)
+        val lost = adapter.insert(2, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), perdidaId, OWNER)
+        val sold = adapter.insert(3, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), vendidaId, OWNER)
         jdbcTemplate.update(
             "INSERT INTO colmeia (id, code, species_id, meliponario_id) VALUES (?, ?, ?, ?)",
             99L, 4, 1L, MEL,
@@ -157,6 +161,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             meliponarioId = MEL,
             startDate = null,
             initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
         )
         val mid = Instant.now().plus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS)
         val newest = Instant.now().plus(2, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS)
@@ -203,6 +208,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             meliponarioId = MEL,
             startDate = null,
             initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
         )
         val newest = Instant.now().plus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MICROS)
         adapter.appendStatus(
@@ -226,6 +232,29 @@ class OwnedColmeiaAdapterIntegrationTest {
     }
 
     @Test
+    fun `insert seed historico records creating actor`() {
+        val created = adapter.insert(
+            code = 12,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = Instant.parse("2026-01-01T00:00:00Z"),
+            initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
+        )
+
+        val row = jdbcTemplate.queryForMap(
+            """
+            SELECT status_id, recorded_by_user_id
+            FROM colmeia_status_historico
+            WHERE colmeia_id = ?
+            """.trimIndent(),
+            created.id,
+        )
+        assertThat(row["status_id"]).isEqualTo(desenvolvendoId)
+        assertThat(row["recorded_by_user_id"]).isEqualTo(OWNER)
+    }
+
+    @Test
     fun `appendStatus stores actor and note and updates current status`() {
         val created = adapter.insert(
             code = 13,
@@ -233,6 +262,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             meliponarioId = MEL,
             startDate = null,
             initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
         )
         // Must be after insert's NOW() so this row becomes current by recorded_at ordering.
         // Truncate to micros — Postgres timestamptz stores microsecond precision.
@@ -276,6 +306,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             meliponarioId = MEL,
             startDate = null,
             initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
         )
 
         val updated = adapter.appendStatus(
@@ -309,6 +340,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             meliponarioId = MEL,
             startDate = null,
             initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
         )
         val later = Instant.now().plus(2, ChronoUnit.HOURS)
         val earlier = Instant.now().minus(1, ChronoUnit.HOURS)
@@ -341,8 +373,8 @@ class OwnedColmeiaAdapterIntegrationTest {
         insertUsuario(OTHER, "p@x.test")
         insertMeliponario(MEL_OTHER, OTHER)
 
-        adapter.insert(2, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
-        adapter.insert(2, 1, MEL_OTHER, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+        adapter.insert(2, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId, OWNER)
+        adapter.insert(2, 1, MEL_OTHER, Instant.parse("2026-01-01T00:00:00Z"), estavelId, OWNER)
 
         assertThat(adapter.findByCodeForOwner(OWNER, 2)).hasSize(1)
         assertThat(adapter.findByCodeForOwner(OTHER, 2)).hasSize(1)
@@ -354,7 +386,7 @@ class OwnedColmeiaAdapterIntegrationTest {
     fun `co-member can find list and delete a hive in a shared yard`() {
         insertUsuario(MEMBER, "m@x.test")
         addMember(MEL, MEMBER)
-        val hive = adapter.insert(3, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+        val hive = adapter.insert(3, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId, OWNER)
 
         assertThat(adapter.findByCodeForOwner(MEMBER, 3)).extracting("id").containsExactly(hive.id)
         assertThat(adapter.listByOwner(MEMBER, emptyList(), 20, 0)).extracting("id").containsExactly(hive.id)
@@ -365,7 +397,7 @@ class OwnedColmeiaAdapterIntegrationTest {
     @Test
     fun `non-member delete returns false and the row survives`() {
         insertUsuario(OTHER, "p@x.test")
-        val hive = adapter.insert(3, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+        val hive = adapter.insert(3, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId, OWNER)
 
         assertThat(adapter.deleteByIdForOwner(OTHER, hive.id)).isFalse()
         assertThat(colmeiaCount(hive.id)).isEqualTo(1L)
@@ -375,7 +407,7 @@ class OwnedColmeiaAdapterIntegrationTest {
     fun `revoked member loses access`() {
         insertUsuario(MEMBER, "m@x.test")
         addMember(MEL, MEMBER)
-        val hive = adapter.insert(4, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+        val hive = adapter.insert(4, 1, MEL, Instant.parse("2026-01-01T00:00:00Z"), estavelId, OWNER)
         assertThat(adapter.findByCodeForOwner(MEMBER, 4)).extracting("id").containsExactly(hive.id)
 
         jdbcTemplate.update(
@@ -414,7 +446,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             "INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)",
             MEL_ORPHAN, "orphan", "addr", OWNER,
         )
-        val hive = adapter.insert(5, 1, MEL_ORPHAN, Instant.parse("2026-01-01T00:00:00Z"), estavelId)
+        val hive = adapter.insert(5, 1, MEL_ORPHAN, Instant.parse("2026-01-01T00:00:00Z"), estavelId, OWNER)
 
         assertThat(adapter.listMeliponarioIdsByOwner(OWNER)).containsExactly(MEL)
         assertThat(adapter.findByCodeForOwner(OWNER, 5)).isEmpty()

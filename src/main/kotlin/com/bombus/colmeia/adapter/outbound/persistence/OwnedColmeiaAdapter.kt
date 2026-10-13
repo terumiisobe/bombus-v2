@@ -101,6 +101,7 @@ class OwnedColmeiaAdapter(
         meliponarioId: Long,
         startDate: Instant?,
         initialStatusId: Long,
+        recordedByUserId: Long,
     ): ColmeiaSummary {
         val keyHolder = GeneratedKeyHolder()
         jdbc.jdbcTemplate.update({ connection ->
@@ -118,10 +119,14 @@ class OwnedColmeiaAdapter(
         }, keyHolder)
         val id = keyHolder.key!!.toLong()
         jdbc.update(
-            "INSERT INTO colmeia_status_historico (colmeia_id, status_id, recorded_at) VALUES (:id, :statusId, NOW())",
+            """
+            INSERT INTO colmeia_status_historico (colmeia_id, status_id, recorded_at, recorded_by_user_id)
+            VALUES (:id, :statusId, NOW(), :recordedByUserId)
+            """.trimIndent(),
             MapSqlParameterSource()
                 .addValue("id", id)
-                .addValue("statusId", initialStatusId),
+                .addValue("statusId", initialStatusId)
+                .addValue("recordedByUserId", recordedByUserId),
         )
         return findByIdUnchecked(id)!!
     }

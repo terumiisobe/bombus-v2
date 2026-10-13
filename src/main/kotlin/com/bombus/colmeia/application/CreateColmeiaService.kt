@@ -9,6 +9,7 @@ import com.bombus.colmeia.domain.ColmeiaCommandError
 import com.bombus.colmeia.domain.ColmeiaSummary
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
 
 @Service
 class CreateColmeiaService(
@@ -16,6 +17,7 @@ class CreateColmeiaService(
     private val vocabularyPort: ColmeiaVocabularyPort,
     private val statusLookupPort: StatusColmeiaLookupPort,
     private val codeAvailability: ColmeiaCodeAvailability,
+    private val clock: Clock,
 ) : CreateColmeiaUseCase {
 
     @Transactional
@@ -29,12 +31,15 @@ class CreateColmeiaService(
             ?: throw ColmeiaCommandError.UnknownStatus()
         requireKnownStatus(statusId)
 
+        val startDate = command.startDate ?: clock.instant()
+
         return ownedColmeiaPort.insert(
             code = command.code,
             speciesId = command.speciesId,
             meliponarioId = meliponarioId,
-            startDate = command.startDate,
+            startDate = startDate,
             initialStatusId = statusId,
+            recordedByUserId = command.userId,
         )
     }
 
