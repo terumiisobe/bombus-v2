@@ -761,6 +761,7 @@ class ChatToolExecutorTest {
         assertTrue(updateDef.description.contains("perdida or vendida", ignoreCase = true))
         assertTrue(updateDef.description.contains("sole hive", ignoreCase = true))
         assertTrue(updateDef.description.contains("without currentStatus", ignoreCase = true))
+        assertTrue(updateDef.description.contains("no helpful closers", ignoreCase = true))
         assertTrue(!updateDef.description.contains("Do not prefer this tool over delete"))
         assertTrue(!updateDef.description.contains("same-status confirmations"))
         assertTrue(!updateDef.description.contains("listar"))
@@ -791,12 +792,18 @@ class ChatToolExecutorTest {
         assertTrue(detailDef.description.contains("do not invent not-found", ignoreCase = true))
         assertTrue(detailDef.description.contains("plain text", ignoreCase = true))
         assertTrue(detailDef.description.contains("**bold**"))
+        assertTrue(detailDef.description.contains("no helpful closers", ignoreCase = true))
         val detailStatus = (detailDef.parametersJsonSchema["properties"] as Map<*, *>)["status"] as Map<*, *>
         assertTrue(detailStatus["description"].toString().contains("Omit for a sole hive"))
 
         val countDef = executor.definitions().first { it.name == ChatToolNames.COUNT_COLMEIAS }
         assertTrue(countDef.description.contains("not a list of codes", ignoreCase = true))
         assertTrue(countDef.description.contains("Never invent names, hive rows", ignoreCase = true))
+        assertTrue(countDef.description.contains("no helpful closers", ignoreCase = true))
+        assertTrue(countDef.description.contains("estou por aqui"))
+
+        val sampleDef = executor.definitions().first { it.name == ChatToolNames.SAMPLE_COLMEIAS }
+        assertTrue(sampleDef.description.contains("no helpful closers", ignoreCase = true))
     }
 
     @Test
@@ -808,6 +815,7 @@ class ChatToolExecutorTest {
         assertTrue(createDef.description.contains("never invent", ignoreCase = true))
         assertTrue(createDef.description.contains("plain text", ignoreCase = true))
         assertTrue(createDef.description.contains("**bold**"))
+        assertTrue(createDef.description.contains("No helpful closers"))
         val props = createDef.parametersJsonSchema["properties"] as Map<*, *>
         assertTrue(props.containsKey("code"))
         assertTrue(props.containsKey("confirmed"))
