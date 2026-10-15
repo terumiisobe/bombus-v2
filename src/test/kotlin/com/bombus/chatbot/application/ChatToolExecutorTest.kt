@@ -698,6 +698,10 @@ class ChatToolExecutorTest {
         assertEquals(ChatToolNames.RECORD_COLMEIA_LOCATION, result.name)
         assertTrue(result.contentJson.contains("\"registered\":true"))
         assertTrue(result.contentJson.contains("\"code\":7"))
+        assertTrue(result.contentJson.contains("\"replyHint\":\"7 ✅\""))
+        assertTrue(!result.contentJson.contains("latitude"))
+        assertTrue(!result.contentJson.contains("longitude"))
+        assertTrue(!result.contentJson.contains("recordedAt"))
         assertEquals(
             RecordColmeiaLocationCommand(
                 userId = 42L,
@@ -707,6 +711,23 @@ class ChatToolExecutorTest {
             ),
             location.lastCommand,
         )
+    }
+
+    @Test
+    fun `record_colmeia_location definition asks for WhatsApp pin only and omits coord echo`() {
+        val def = executor.definitions().first { it.name == ChatToolNames.RECORD_COLMEIA_LOCATION }
+        assertTrue(def.description.contains("WhatsApp location pin", ignoreCase = true))
+        assertTrue(def.description.contains("[localização WhatsApp]"))
+        assertTrue(def.description.contains("Never ask the user to type latitude", ignoreCase = true))
+        assertTrue(def.description.contains("replyHint"))
+        assertTrue(def.description.contains("✅"))
+        assertTrue(!def.description.contains("states latitude/longitude"))
+        val props = def.parametersJsonSchema["properties"] as Map<*, *>
+        val latDesc = (props["latitude"] as Map<*, *>)["description"] as String
+        val lonDesc = (props["longitude"] as Map<*, *>)["description"] as String
+        assertTrue(latDesc.contains("Internal", ignoreCase = true))
+        assertTrue(lonDesc.contains("Internal", ignoreCase = true))
+        assertTrue(latDesc.contains("not for user-facing", ignoreCase = true))
     }
 
     @Test
