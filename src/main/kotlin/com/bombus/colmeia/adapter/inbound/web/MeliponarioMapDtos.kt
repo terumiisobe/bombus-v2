@@ -12,6 +12,11 @@ import java.time.ZoneOffset
 data class MeliponarioMapResponse(
     @Schema(example = "Meliponário Isobe")
     val farmName: String,
+    @Schema(
+        example = "Estrada do Mel 123, São Paulo - SP",
+        description = "Free-text farm address from meliponario.address (DB NOT NULL; always present as string)",
+    )
+    val address: String,
     @Schema(example = "2026-10-15T12:00:00Z")
     val updatedAt: Instant?,
     val hives: List<MeliponarioMapHiveResponse>,
@@ -43,6 +48,7 @@ data class MeliponarioMapHiveResponse(
 internal fun MeliponarioMapView.toResponse(): MeliponarioMapResponse =
     MeliponarioMapResponse(
         farmName = farmName,
+        address = address,
         updatedAt = updatedAt(),
         hives = hives.map { it.toResponse() },
     )

@@ -31,6 +31,7 @@ class MeliponarioMapAdapter(
             Row(
                 meliponarioId = rs.getLong("meliponario_id"),
                 farmName = rs.getString("farm_name"),
+                address = rs.getString("address"),
                 colmeiaId = rs.getLong("colmeia_id").takeUnless { rs.wasNull() },
                 code = rs.getInt("code").takeUnless { rs.wasNull() },
                 latitude = rs.getBigDecimal("latitude"),
@@ -62,6 +63,7 @@ class MeliponarioMapAdapter(
         return MeliponarioMapView(
             meliponarioId = first.meliponarioId,
             farmName = first.farmName,
+            address = first.address,
             hives = hives,
         )
     }
@@ -69,6 +71,7 @@ class MeliponarioMapAdapter(
     private data class Row(
         val meliponarioId: Long,
         val farmName: String,
+        val address: String,
         val colmeiaId: Long?,
         val code: Int?,
         val latitude: BigDecimal?,
@@ -86,6 +89,7 @@ class MeliponarioMapAdapter(
             SELECT
                 m.id AS meliponario_id,
                 m.name AS farm_name,
+                m.address AS address,
                 c.id AS colmeia_id,
                 c.code AS code,
                 c.start_date AS start_date,

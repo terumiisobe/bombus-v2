@@ -11,6 +11,8 @@ import java.time.LocalDate
 data class MeliponarioMapView(
     val meliponarioId: Long,
     val farmName: String,
+    /** Free-text farm address from `meliponario.address` (DB NOT NULL). */
+    val address: String,
     val hives: List<MeliponarioMapHive>,
 ) {
     /** Aggregate freshness: max of hive start, last inspection, and location pin times. */

@@ -20,6 +20,7 @@ class GetMeliponarioMapServiceTest {
         val view = MeliponarioMapView(
             meliponarioId = 10,
             farmName = "Meliponário Isobe",
+            address = "Estrada do Mel 123",
             hives = listOf(
                 MeliponarioMapHive(
                     code = 12,
@@ -39,6 +40,7 @@ class GetMeliponarioMapServiceTest {
         val result = service.get(GetMeliponarioMapQuery(userId = 1, meliponarioId = 10))
 
         assertEquals("Meliponário Isobe", result.farmName)
+        assertEquals("Estrada do Mel 123", result.address)
         assertEquals(1, result.hives.size)
         assertEquals(12, result.hives[0].code)
         assertEquals(Instant.parse("2026-10-09T15:00:00Z"), result.updatedAt())
@@ -49,6 +51,7 @@ class GetMeliponarioMapServiceTest {
         val view = MeliponarioMapView(
             meliponarioId = 10,
             farmName = "Yard",
+            address = "addr",
             hives = listOf(
                 MeliponarioMapHive(
                     code = 1,
@@ -72,6 +75,7 @@ class GetMeliponarioMapServiceTest {
         val view = MeliponarioMapView(
             meliponarioId = 10,
             farmName = "Empty",
+            address = "addr",
             hives = emptyList(),
         )
         assertNull(view.updatedAt())
