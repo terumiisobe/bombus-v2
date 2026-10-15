@@ -120,10 +120,10 @@ class LocalizacaoAdapterIntegrationTest {
         val t2 = Instant.parse("2026-10-15T11:00:00Z")
 
         localizacao.append(
-            AppendLocalizacao(OWNER, hive.id, BigDecimal("10.000000"), BigDecimal("20.000000"), null, t1),
+            AppendLocalizacao(OWNER, hive.id, BigDecimal("10.000000"), BigDecimal("20.000000"), t1),
         )
         localizacao.append(
-            AppendLocalizacao(OWNER, hive.id, BigDecimal("11.000000"), BigDecimal("21.000000"), null, t2),
+            AppendLocalizacao(OWNER, hive.id, BigDecimal("11.000000"), BigDecimal("21.000000"), t2),
         )
 
         val latestLat = jdbcTemplate.queryForObject(

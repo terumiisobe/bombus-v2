@@ -12,6 +12,5 @@ data class LocalizacaoReading(
     val colmeiaId: Long,
     val latitude: BigDecimal,
     val longitude: BigDecimal,
-    val accuracyMeters: BigDecimal?,
     val recordedAt: Instant,
 )

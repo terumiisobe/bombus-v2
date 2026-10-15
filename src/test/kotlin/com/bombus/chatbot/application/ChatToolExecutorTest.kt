@@ -683,7 +683,6 @@ class ChatToolExecutorTest {
             colmeiaId = 100L,
             latitude = BigDecimal("-23.55"),
             longitude = BigDecimal("-46.63"),
-            accuracyMeters = null,
             recordedAt = Instant.parse("2026-10-15T12:00:00Z"),
         )
 
@@ -705,7 +704,6 @@ class ChatToolExecutorTest {
                 colmeiaId = 100L,
                 latitude = BigDecimal.valueOf(-23.55),
                 longitude = BigDecimal.valueOf(-46.63),
-                accuracyMeters = null,
             ),
             location.lastCommand,
         )

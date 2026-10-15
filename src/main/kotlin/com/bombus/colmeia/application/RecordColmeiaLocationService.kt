@@ -31,7 +31,6 @@ class RecordColmeiaLocationService(
                 colmeiaId = command.colmeiaId,
                 latitude = command.latitude,
                 longitude = command.longitude,
-                accuracyMeters = command.accuracyMeters,
                 recordedAt = clock.instant(),
             ),
         ) ?: throw ColmeiaCommandError.ColmeiaNotFound()

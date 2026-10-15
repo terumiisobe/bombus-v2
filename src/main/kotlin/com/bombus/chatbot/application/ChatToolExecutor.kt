@@ -400,7 +400,6 @@ class ChatToolExecutor(
                 colmeiaId = hive.colmeiaId,
                 latitude = latitude,
                 longitude = longitude,
-                accuracyMeters = args.optionalDecimal("accuracyMeters"),
             ),
         )
         return objectMapper.writeValueAsString(
@@ -806,10 +805,6 @@ class ChatToolExecutor(
                     "code" to mapOf("type" to "integer", "description" to "Hive code to attach the location to"),
                     "latitude" to mapOf("type" to "number", "description" to "Latitude from the location pin"),
                     "longitude" to mapOf("type" to "number", "description" to "Longitude from the location pin"),
-                    "accuracyMeters" to mapOf(
-                        "type" to listOf("number", "null"),
-                        "description" to "Optional accuracy in meters when known; otherwise omit",
-                    ),
                     "status" to mapOf(
                         "type" to listOf("string", "null"),
                         "description" to

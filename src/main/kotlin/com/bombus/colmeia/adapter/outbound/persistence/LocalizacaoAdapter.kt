@@ -27,7 +27,6 @@ class LocalizacaoAdapter(
                 .addValue("colmeiaId", command.colmeiaId)
                 .addValue("latitude", command.latitude)
                 .addValue("longitude", command.longitude)
-                .addValue("accuracyMeters", command.accuracyMeters)
                 .addValue("at", Timestamp.from(command.recordedAt)),
             keyHolder,
             arrayOf("id"),
@@ -39,15 +38,14 @@ class LocalizacaoAdapter(
             colmeiaId = command.colmeiaId,
             latitude = command.latitude,
             longitude = command.longitude,
-            accuracyMeters = command.accuracyMeters,
             recordedAt = command.recordedAt,
         )
     }
 
     private companion object {
         val APPEND_SQL = """
-            INSERT INTO localizacao (colmeia_id, latitude, longitude, accuracy_meters, recorded_at)
-            SELECT :colmeiaId, :latitude, :longitude, :accuracyMeters, :at
+            INSERT INTO localizacao (colmeia_id, latitude, longitude, recorded_at)
+            SELECT :colmeiaId, :latitude, :longitude, :at
             FROM colmeia c
             WHERE c.id = :colmeiaId
               AND $ACCESSIBLE_COLMEIA

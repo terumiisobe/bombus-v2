@@ -17,6 +17,5 @@ data class AppendLocalizacao(
     val colmeiaId: Long,
     val latitude: BigDecimal,
     val longitude: BigDecimal,
-    val accuracyMeters: BigDecimal? = null,
     val recordedAt: Instant,
 )

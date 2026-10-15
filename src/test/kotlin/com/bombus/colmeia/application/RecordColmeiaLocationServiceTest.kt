@@ -106,7 +106,6 @@ class RecordColmeiaLocationServiceTest {
                 colmeiaId = command.colmeiaId,
                 latitude = command.latitude,
                 longitude = command.longitude,
-                accuracyMeters = command.accuracyMeters,
                 recordedAt = command.recordedAt,
             )
         }
