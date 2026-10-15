@@ -160,7 +160,6 @@ const TABLES: TableDef[] = [
       { name: "colmeia_id", type: "BIGINT", constraint: "NOT NULL FK, ON DELETE CASCADE" },
       { name: "latitude", type: "DECIMAL(9,6)", constraint: "NOT NULL" },
       { name: "longitude", type: "DECIMAL(9,6)", constraint: "NOT NULL" },
-      { name: "accuracy_meters", type: "DECIMAL(5,2)", constraint: "nullable" },
       { name: "recorded_at", type: "TIMESTAMPTZ", constraint: "NOT NULL DEFAULT now()" },
     ],
     extras: ["idx_localizacao_atual (colmeia_id, recorded_at DESC)."],

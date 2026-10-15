@@ -87,7 +87,6 @@ CREATE TABLE localizacao (
   colmeia_id BIGINT NOT NULL,
   latitude DECIMAL(9,6) NOT NULL,
   longitude DECIMAL(9,6) NOT NULL,
-  accuracy_meters DECIMAL(5,2),
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   FOREIGN KEY (colmeia_id) REFERENCES colmeia(id) ON DELETE CASCADE
 );

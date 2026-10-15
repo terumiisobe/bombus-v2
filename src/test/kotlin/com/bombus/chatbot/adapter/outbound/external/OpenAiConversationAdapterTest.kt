@@ -110,6 +110,8 @@ class OpenAiConversationAdapterTest {
             .contains("quais")
             .contains("Nunca invente linhas")
             .contains("sole inativa resolve sem status")
+            .contains("record_colmeia_location")
+            .contains("[localização WhatsApp]")
             .doesNotContain("Do not prefer this tool over delete")
             .doesNotContain("não há ferramenta de listar")
             .doesNotContain("listar")

@@ -9,4 +9,5 @@ object ChatToolNames {
     const val CREATE_COLMEIA = "create_colmeia"
     const val UPDATE_COLMEIA = "update_colmeia"
     const val DELETE_COLMEIA = "delete_colmeia"
+    const val RECORD_COLMEIA_LOCATION = "record_colmeia_location"
 }

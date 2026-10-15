@@ -20,6 +20,8 @@ import com.bombus.colmeia.application.port.inbound.ResolveColmeiaIdUseCase
 import com.bombus.colmeia.application.port.inbound.ResolveColmeiaQuery
 import com.bombus.colmeia.application.port.inbound.ResolvedColmeia
 import com.bombus.colmeia.domain.ColmeiaDetail
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationCommand
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationUseCase
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
 import com.bombus.colmeia.application.ColmeiaCountProperties
@@ -27,9 +29,11 @@ import com.bombus.colmeia.domain.ColmeiaCount
 import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
 import com.bombus.colmeia.domain.ColmeiaVocabulary
+import com.bombus.colmeia.domain.LocalizacaoReading
 import com.bombus.colmeia.domain.SpeciesRef
 import com.bombus.colmeia.domain.StatusRef
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import java.math.BigDecimal
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,6 +52,7 @@ class ChatToolExecutorTest {
     private val create = RecordingCreate()
     private val update = RecordingUpdate()
     private val delete = RecordingDelete()
+    private val location = RecordingLocation()
     private val executor = ChatToolExecutor(
         countColmeias = count,
         listOwnedColmeias = sample,
@@ -58,6 +63,7 @@ class ChatToolExecutorTest {
         createColmeia = create,
         recordColmeiaStatus = update,
         deleteColmeia = delete,
+        recordColmeiaLocation = location,
         objectMapper = objectMapper,
         countProperties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida")),
     )
@@ -648,6 +654,7 @@ class ChatToolExecutorTest {
                 ChatToolNames.CREATE_COLMEIA,
                 ChatToolNames.UPDATE_COLMEIA,
                 ChatToolNames.DELETE_COLMEIA,
+                ChatToolNames.RECORD_COLMEIA_LOCATION,
             ),
             names,
         )
@@ -667,6 +674,62 @@ class ChatToolExecutorTest {
         assertTrue(historyProps.containsKey("limit"))
         assertTrue(!historyProps.containsKey("source"))
         assertTrue(!historyProps.containsKey("visitedAt"))
+    }
+
+    @Test
+    fun `record_colmeia_location resolves code and forwards coordinates`() {
+        location.result = LocalizacaoReading(
+            id = 9L,
+            colmeiaId = 100L,
+            latitude = BigDecimal("-23.55"),
+            longitude = BigDecimal("-46.63"),
+            recordedAt = Instant.parse("2026-10-15T12:00:00Z"),
+        )
+
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_loc",
+                name = ChatToolNames.RECORD_COLMEIA_LOCATION,
+                argumentsJson = """{"code":7,"latitude":-23.55,"longitude":-46.63}""",
+            ),
+        )
+
+        assertEquals(ChatToolNames.RECORD_COLMEIA_LOCATION, result.name)
+        assertTrue(result.contentJson.contains("\"registered\":true"))
+        assertTrue(result.contentJson.contains("\"code\":7"))
+        assertEquals(
+            RecordColmeiaLocationCommand(
+                userId = 42L,
+                colmeiaId = 100L,
+                latitude = BigDecimal.valueOf(-23.55),
+                longitude = BigDecimal.valueOf(-46.63),
+            ),
+            location.lastCommand,
+        )
+    }
+
+    @Test
+    fun `record_colmeia_location requires code and coordinates`() {
+        val missingCode = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_loc_code",
+                name = ChatToolNames.RECORD_COLMEIA_LOCATION,
+                argumentsJson = """{"latitude":1.0,"longitude":2.0}""",
+            ),
+        )
+        assertTrue(missingCode.contentJson.contains("missing_code"))
+
+        val missingLat = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_loc_lat",
+                name = ChatToolNames.RECORD_COLMEIA_LOCATION,
+                argumentsJson = """{"code":7,"longitude":2.0}""",
+            ),
+        )
+        assertTrue(missingLat.contentJson.contains("missing_latitude"))
     }
 
     @Test
@@ -801,6 +864,17 @@ class ChatToolExecutorTest {
             private set
 
         override fun delete(command: DeleteColmeiaCommand): DeletedColmeia {
+            lastCommand = command
+            return result
+        }
+    }
+
+    private class RecordingLocation : RecordColmeiaLocationUseCase {
+        lateinit var result: LocalizacaoReading
+        var lastCommand: RecordColmeiaLocationCommand? = null
+            private set
+
+        override fun record(command: RecordColmeiaLocationCommand): LocalizacaoReading {
             lastCommand = command
             return result
         }

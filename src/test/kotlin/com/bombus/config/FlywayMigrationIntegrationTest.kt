@@ -32,7 +32,21 @@ class FlywayMigrationIntegrationTest {
             String::class.java,
         )
 
-        assertThat(applied).contains("1", "2", "3", "4", "5", "6", "7")
+        assertThat(applied).contains("1", "2", "3", "4", "5", "6", "7", "8")
+    }
+
+    @Test
+    fun `localizacao has no accuracy_meters after V8`() {
+        val columns = jdbcTemplate.queryForList(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'localizacao'
+            """.trimIndent(),
+            String::class.java,
+        )
+
+        assertThat(columns).contains("latitude", "longitude", "recorded_at", "colmeia_id")
+        assertThat(columns).doesNotContain("accuracy_meters")
     }
 
     @Test

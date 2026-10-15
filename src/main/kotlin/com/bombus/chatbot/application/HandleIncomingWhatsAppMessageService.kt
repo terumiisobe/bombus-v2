@@ -43,12 +43,13 @@ class HandleIncomingWhatsAppMessageService(
     override fun handle(command: IncomingMessage): String =
         when (val resolution = resolveCustomer.resolve(command.phoneNumber)) {
             CustomerResolution.NotLinked -> NOT_LINKED_MESSAGE
-            is CustomerResolution.Resolved -> handleResolved(resolution.customer, command.text)
+            is CustomerResolution.Resolved -> handleResolved(resolution.customer, command)
         }
 
-    private fun handleResolved(customer: Customer, text: String): String {
+    private fun handleResolved(customer: Customer, command: IncomingMessage): String {
         val now = clock.instant()
         val context = loadContext(customer.whatsappUserId, now)
+        val text = command.textForAgent()
         val reply = runAgentLoop(customer.userId, context, text)
         persist(customer.whatsappUserId, context, text, reply, now)
         return reply
