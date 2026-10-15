@@ -394,7 +394,7 @@ class ChatToolExecutor(
         val hiveOutcome = resolveHive(userId, code, args.optionalString("status"))
         if (hiveOutcome is ResolveHive.Failed) return hiveOutcome.errorJson
         val hive = (hiveOutcome as ResolveHive.Ok).value
-        val reading = recordColmeiaLocation.record(
+        recordColmeiaLocation.record(
             RecordColmeiaLocationCommand(
                 userId = userId,
                 colmeiaId = hive.colmeiaId,
@@ -402,13 +402,13 @@ class ChatToolExecutor(
                 longitude = longitude,
             ),
         )
+        // Compact success payload: omit lat/long so the model cannot echo them.
+        // Coordinates remain stored via the use case; reply UX is code + ✅ only.
         return objectMapper.writeValueAsString(
             mapOf(
                 "registered" to true,
                 "code" to code,
-                "latitude" to reading.latitude,
-                "longitude" to reading.longitude,
-                "recordedAt" to reading.recordedAt.toString(),
+                "replyHint" to "$code ✅",
             ),
         )
     }
@@ -792,19 +792,32 @@ class ChatToolExecutor(
         val RECORD_COLMEIA_LOCATION_DEF = ToolDefinition(
             name = ChatToolNames.RECORD_COLMEIA_LOCATION,
             description =
-                "Register GPS coordinates on one hive (registry location update, not a field visit). " +
-                    "Use when the user shares a WhatsApp location pin or states latitude/longitude for a " +
-                    "hive code. Prefer the active hive; a sole hive for the code — including already " +
-                    "perdida/vendida — resolves without status. Optional status only disambiguates when " +
-                    "active and inactive share the code. Appends a localizacao row (recorded_at). " +
+                "Register a WhatsApp location pin on one hive (registry update, not a field visit). " +
+                    "Call only when the user message includes the internal \"[localização WhatsApp]\" pin " +
+                    "marker with coordinates. Never ask the user to type latitude, longitude, coordinates, " +
+                    "or numbers — if a location is needed and there is no pin yet, ask only to send the " +
+                    "current WhatsApp location pin. Prefer the active hive; a sole hive for the code — " +
+                    "including already perdida/vendida — resolves without status. Optional status only " +
+                    "disambiguates when active and inactive share the code. Appends a localizacao row. " +
                     "If the code is unclear from the message or recent turns, ask which code before calling. " +
-                    "Never pass numeric hive ids.",
+                    "On success the tool JSON has code and replyHint — reply with that (hive code + ✅) " +
+                    "only; never echo lat/long, address, or label. Never pass numeric hive ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
                     "code" to mapOf("type" to "integer", "description" to "Hive code to attach the location to"),
-                    "latitude" to mapOf("type" to "number", "description" to "Latitude from the location pin"),
-                    "longitude" to mapOf("type" to "number", "description" to "Longitude from the location pin"),
+                    "latitude" to mapOf(
+                        "type" to "number",
+                        "description" to
+                            "Internal: latitude from the \"[localização WhatsApp]\" pin marker only — " +
+                            "not for user-facing replies",
+                    ),
+                    "longitude" to mapOf(
+                        "type" to "number",
+                        "description" to
+                            "Internal: longitude from the \"[localização WhatsApp]\" pin marker only — " +
+                            "not for user-facing replies",
+                    ),
                     "status" to mapOf(
                         "type" to listOf("string", "null"),
                         "description" to
