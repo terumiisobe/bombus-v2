@@ -22,6 +22,8 @@ class SecurityConfig {
             .authorizeHttpRequests {
                 it.requestMatchers("/health").permitAll()
                 it.requestMatchers("/v1/whatsapp/webhook").permitAll()
+                // Interim: identity via X-User-Id; membership enforced in JDBC (meliponario_membro).
+                it.requestMatchers("/v1/meliponarios/**").permitAll()
                 it.requestMatchers("/v1/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 it.anyRequest().denyAll()
             }

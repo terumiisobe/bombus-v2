@@ -1,5 +1,6 @@
 package com.bombus.adapter.inbound.web
 
+import com.bombus.colmeia.domain.ColmeiaCommandError
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -18,6 +19,17 @@ class WebExceptionHandler {
         log.warn("Rejected webhook request to {}: {}", request.requestURI, ex.message)
         return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, "Request signature verification failed").apply {
             title = "Forbidden"
+        }
+    }
+
+    @ExceptionHandler(ColmeiaCommandError.MeliponarioNotFound::class)
+    fun handleMeliponarioNotFound(
+        ex: ColmeiaCommandError.MeliponarioNotFound,
+        request: HttpServletRequest,
+    ): ProblemDetail {
+        log.info("Meliponário not found for {}: {}", request.requestURI, ex.message)
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "Meliponário not found").apply {
+            title = "Not Found"
         }
     }
 }
