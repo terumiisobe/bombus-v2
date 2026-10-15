@@ -624,12 +624,13 @@ class ChatToolExecutor(
             name = ChatToolNames.DETAIL_COLMEIA,
             description =
                 "Detalhar one hive: code, species common name, speciesScientificName when known, " +
-                    "current status, and last visit. The user gives a code; this tool resolves it to one hive. " +
-                    "Prefer the active hive when the code has one. A sole hive for the code — including " +
-                    "perdida or vendida — resolves without status; do not invent not-found for a sole " +
-                    "inactive. Optional status only disambiguates when an active hive and an inactive hive " +
-                    "share the code. A read does not ask for confirmation. Never pass numeric ids. " +
-                    "Do not say listar.",
+                    "current status, and last visit. Restate those fields in plain text only — never wrap " +
+                    "labels or values in Markdown **bold** (or other Markdown). The user gives a code; " +
+                    "this tool resolves it to one hive. Prefer the active hive when the code has one. " +
+                    "A sole hive for the code — including perdida or vendida — resolves without status; " +
+                    "do not invent not-found for a sole inactive. Optional status only disambiguates when " +
+                    "an active hive and an inactive hive share the code. A read does not ask for " +
+                    "confirmation. Never pass numeric ids. Do not say listar.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -683,7 +684,8 @@ class ChatToolExecutor(
                     "gives a code, create in that turn. When code is omitted or null, do not create yet: " +
                     "ask once whether to cadastrar sem código, then call again with confirmed=true and " +
                     "code=null. startDate only if the user provided one (otherwise omit; server defaults " +
-                    "to now). status defaults to desenvolvendo. Restate only tool JSON fields — if code " +
+                    "to now). status defaults to desenvolvendo. Restate only tool JSON fields in plain " +
+                    "text — never Markdown **bold** (or other Markdown) around labels/values; if code " +
                     "is null say sem código; never invent a code. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
