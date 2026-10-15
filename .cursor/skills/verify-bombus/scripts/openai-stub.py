@@ -1,5 +1,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import re
+import sys
 
 def read_chunked(rfile):
     chunks = []
@@ -33,6 +35,15 @@ def has_tool_result(messages):
 def tool_call(name, args, call_id="call_verify_1"):
     return {"id": call_id, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
 
+def code_from_text(text, default=1):
+    m = re.search(r"c[oó]digo\s*(\d+)|colmeia\s+(\d+)|hive\s+(\d+)", text)
+    if not m:
+        return default
+    for g in m.groups():
+        if g:
+            return int(g)
+    return default
+
 def completion(body):
     messages = body.get("messages") or []
     text = user_text(messages)
@@ -41,27 +52,102 @@ def completion(body):
         tool_payloads = [m.get("content", "") for m in messages if m.get("role") == "tool"]
         last = tool_payloads[-1] if tool_payloads else "{}"
         message = {"role": "assistant", "content": f"Ok. Resultado da ferramenta: {last[:400]}"}
-    elif any(k in text for k in ("liste", "listar")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("list_colmeias", {"limit": 20})]}
+    elif any(k in text for k in ("historico", "histórico", "visitas da", "visitas da colmeia")):
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [tool_call("list_colmeia_history", {"code": code_from_text(text, 1)})],
+        }
+    elif any(k in text for k in ("detalhe", "detalhar", "mostrar colmeia", "me fala da colmeia")):
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [tool_call("detail_colmeia", {"code": code_from_text(text, 1)})],
+        }
+    elif any(k in text for k in ("liste", "listar", "quais colmeias")):
+        # list_colmeias removed (#19); count with species grouping is the stub stand-in for listing.
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [tool_call("count_colmeias", {"species": None, "status": None, "groupBy": ["SPECIES"]})],
+        }
+    elif any(k in text for k in ("confirmo sem codigo", "confirmo sem código", "cadastrar sem codigo, confirmo", "cadastrar sem código, confirmo")):
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [tool_call("create_colmeia", {"species": "Jataí", "confirmed": True})],
+        }
+    elif any(k in text for k in ("criar codigo", "criar código", "cadastrar codigo", "cadastrar código")):
+        code = code_from_text(text, 10)
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [tool_call("create_colmeia", {"species": "Jataí", "code": code})],
+        }
     elif any(k in text for k in ("criar", "nova colmeia", "cadastrar")):
+        # #20: omit code → confirmation_required unless confirmed=true
         message = {"role": "assistant", "content": None, "tool_calls": [tool_call("create_colmeia", {"species": "Jataí"})]}
     elif any(k in text for k in ("vendida", "vendeu", "vendi", "foi vendida")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "status": "vendida"})]}
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [tool_call("update_colmeia", {"code": code_from_text(text, 1), "status": "vendida"})],
+        }
     elif any(k in text for k in ("perdida", "perdi", "perdeu", "foi perdida")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "status": "perdida"})]}
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [tool_call("update_colmeia", {"code": code_from_text(text, 1), "status": "perdida"})],
+        }
     elif any(k in text for k in ("atualizar", "mudar status", "visita", "acompanhamento")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("update_colmeia", {"code": 1, "status": "desenvolvendo"})]}
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                tool_call(
+                    "update_colmeia",
+                    {"code": code_from_text(text, 1), "status": "estavel", "note": "visita verify"},
+                )
+            ],
+        }
     elif any(k in text for k in ("confirmo exclusao", "confirmo exclusão", "pode excluir", "pode apagar", "sim, exclua", "erro de cadastro, confirma")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("delete_colmeia", {"code": 1, "confirmed": True})]}
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [tool_call("delete_colmeia", {"code": code_from_text(text, 1), "confirmed": True})],
+        }
     elif any(k in text for k in ("erro de cadastro", "cadastro errado", "nunca existiu", "entrada errada")):
-        message = {"role": "assistant", "content": "Isso apaga o cadastro de forma definitiva. Confirma que posso excluir a colmeia código 1 por erro de cadastro?"}
+        message = {
+            "role": "assistant",
+            "content": "Isso apaga o cadastro de forma definitiva. Confirma que posso excluir a colmeia código 1 por erro de cadastro?",
+        }
     elif any(k in text for k in ("excluir", "remover", "apagar", "deletar")):
-        message = {"role": "assistant", "content": "Para saída real do plantel, prefiro marcar como perdida ou vendida (a colmeia fica no histórico). Só uso exclusão definitiva se for erro de cadastro — era isso?"}
+        message = {
+            "role": "assistant",
+            "content": (
+                "Para saída real do plantel, prefiro marcar como perdida ou vendida "
+                "(a colmeia fica no histórico). Só uso exclusão definitiva se for erro de cadastro — era isso?"
+            ),
+        }
     elif any(k in text for k in ("quantas", "contar")):
-        message = {"role": "assistant", "content": None, "tool_calls": [tool_call("count_colmeias", {"species": None, "status": None, "groupBy": []})]}
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [tool_call("count_colmeias", {"species": None, "status": None, "groupBy": []})],
+        }
     else:
-        message = {"role": "assistant", "content": "Posso contar, listar, cadastrar, registrar visita de status, marcar perdida/vendida ou excluir só por erro de cadastro."}
-    return {"id": "chatcmpl-verify", "object": "chat.completion", "choices": [{"index": 0, "message": message, "finish_reason": "stop"}]}
+        message = {
+            "role": "assistant",
+            "content": (
+                "Posso contar, detalhar, ver histórico, cadastrar, registrar visita de status, "
+                "marcar perdida/vendida ou excluir só por erro de cadastro."
+            ),
+        }
+    return {
+        "id": "chatcmpl-verify",
+        "object": "chat.completion",
+        "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
+    }
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -85,5 +171,6 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-print("listening", flush=True)
-ThreadingHTTPServer(("127.0.0.1", 18099), Handler).serve_forever()
+port = int(sys.argv[1]) if len(sys.argv) > 1 else 18099
+print(f"listening on {port}", flush=True)
+ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
