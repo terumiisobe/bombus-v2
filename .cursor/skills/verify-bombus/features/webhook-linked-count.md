@@ -39,6 +39,7 @@ Preconditions:
 - Fake `OPENAI_API_KEY` against the real API yields fallback help-ish text, not a trusted count — do not mark count verified from fallback.
 - Default excluded statuses (`perdida`, `vendida` from `colmeia.default-excluded-statuses`) affect plain totals; assert against that product list — do not invent a second exclude policy. Soft disposition uses the same statuses.
 - Species replies may include the scientific name and an inference disclosure when the model matched vocabulary loosely; those are model-phrased from tool JSON (`speciesScientificName`, labels), not extra DB fields.
-- Unknown `speciesId`/`statusId` return tool error JSON instead of a silent zero — a “0 colmeias” reply with a made-up species name is a model failure, not an empty SQL count.
+- Tool args are species/status **common names** (not numeric ids). Unknown names return `unknown_species` / `unknown_status` JSON instead of a silent zero — a “0 colmeias” reply with a made-up species name is a model failure, not an empty SQL count.
+- Plain totals (no named status) apply `colmeia.default-excluded-statuses`; a named status filter clears that exclude set. `groupBy` breakdowns also skip default exclusion — assert against the same filter the tool used.
 - README “interim linked greeting” is obsolete; linked behavior is the tool-calling agent.
 - If OpenAI or a stub is unavailable, report the feature as blocked with the unmet precondition rather than skipping to fallback.

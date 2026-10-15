@@ -1,6 +1,6 @@
 # Webhook linked help
 
-A correctly signed message from a seeded, active WhatsApp user that the agent cannot process (or that asks what the bot can do) receives a pt-BR reply. When OpenAI fails, the app returns the configured agent fallback, which still steers the user toward counting questions.
+A correctly signed message from a seeded, active WhatsApp user that the agent cannot process (or that asks what the bot can do) receives a pt-BR reply. When OpenAI fails, the app returns the configured agent fallback, which briefly lists colmeia capabilities (detail, history, create, visit, soft exits, delete, count).
 
 ## Sub-features
 
@@ -34,7 +34,7 @@ docker exec bombus-postgres psql -U bombus_usr -d bombus -c \
 
 - Env from `meta.env` exported (`BASE_URL`, `TWILIO_*`).
 
-- **Ask for help / trigger fallback.** Run `.cursor/skills/verify-bombus/scripts/post-webhook.sh --from '+15550001234' --body 'ajuda' --out .cursor/skills/verify-bombus/artifacts/webhook-linked-help/response.xml --headers .cursor/skills/verify-bombus/artifacts/webhook-linked-help/headers.txt`. Observable: HTTP `200`; TwiML `<Message>` is non-empty pt-BR. With a disposable OpenAI key against the real API, expect the fallback to mention listar/cadastrar/visita and soft exits (`perdida`/`vendida`), with exclusão só para erro de cadastro (`ChatbotAgentProperties.fallbackReply`).
+- **Ask for help / trigger fallback.** Run `.cursor/skills/verify-bombus/scripts/post-webhook.sh --from '+15550001234' --body 'ajuda' --out .cursor/skills/verify-bombus/artifacts/webhook-linked-help/response.xml --headers .cursor/skills/verify-bombus/artifacts/webhook-linked-help/headers.txt`. Observable: HTTP `200`; TwiML `<Message>` is non-empty pt-BR. With a disposable OpenAI key against the real API (no stub), expect `ChatbotAgentProperties.fallbackReply`: detalhar / histórico de visitas / cadastrar / registrar visita / perdida ou vendida / excluir / contar — **not** `listar` and **not** the phrase `erro de cadastro`. With `openai-stub.py`, expect the stub’s help blurb instead (still non-empty pt-BR; not a fallback proof).
 - **Confirm session.** Query `sessao_chat` joined to `usuario_whatsapp` for `+15550001234` — expect a row with recent `last_message_at`.
 - **Proof.** Save XML, headers, SQL result snippet under `artifacts/webhook-linked-help/`.
 
@@ -42,6 +42,6 @@ docker exec bombus-postgres psql -U bombus_usr -d bombus -c \
 
 - Seed **after** first boot; seeding before Flyway yields `relation does not exist`.
 - Inactive (`active = false`) numbers behave as not-linked.
-- Linked turns use a bounded OpenAI tool-calling loop (`count_colmeias` / `list_vocabulary`); there is no fixed HELP intent string anymore — assert on fallback or live model text, not the old hard-coded help sentence.
+- Linked turns use a bounded OpenAI tool-calling loop (colmeia tools + `list_vocabulary`); there is no fixed HELP intent string anymore — assert on fallback or live model text, not the old hard-coded help sentence.
 - Do not confuse this TwiML with the not-linked support sentence.
 - Cleanup of seed rows is optional for disposable verify DBs; never delete `artifacts/`.
