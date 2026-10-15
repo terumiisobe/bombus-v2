@@ -557,8 +557,9 @@ class ChatToolExecutor(
                     "status: total is that count, and the default exclusion does not apply. Pass vendidas as " +
                     "vendida. Omit groupBy for a single-status question. On unknown_status do not retry " +
                     "without the status. Never invent names, hive rows, or numeric ids. Numbers and labels " +
-                    "in the tool JSON are authoritative — restate them. For quais / which hives after a " +
-                    "count, call sample_colmeias — do not invent rows.",
+                    "in the tool JSON are authoritative — restate them only (no helpful closers like " +
+                    "estou por aqui / se precisar…). For quais / which hives after a count, call " +
+                    "sample_colmeias — do not invent rows.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -586,8 +587,9 @@ class ChatToolExecutor(
                 "Bounded sample of hives matching optional species/status filters (same filter rules as " +
                     "count_colmeias). Use when the user asks quais / which hives match a filter — especially " +
                     "after a count. Returns code, species (common + scientific), and status per row. Hard " +
-                    "cap (default 20, max 50); never invent rows. Not for one hive (use detail_colmeia) and " +
-                    "not a substitute for count_colmeias totals. Never pass numeric ids.",
+                    "cap (default 20, max 50); never invent rows. Restate the sample facts only — no " +
+                    "helpful closers. Not for one hive (use detail_colmeia) and not a substitute for " +
+                    "count_colmeias totals. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -625,12 +627,12 @@ class ChatToolExecutor(
             description =
                 "Detalhar one hive: code, species common name, speciesScientificName when known, " +
                     "current status, and last visit. Restate those fields in plain text only — never wrap " +
-                    "labels or values in Markdown **bold** (or other Markdown). The user gives a code; " +
-                    "this tool resolves it to one hive. Prefer the active hive when the code has one. " +
-                    "A sole hive for the code — including perdida or vendida — resolves without status; " +
-                    "do not invent not-found for a sole inactive. Optional status only disambiguates when " +
-                    "an active hive and an inactive hive share the code. A read does not ask for " +
-                    "confirmation. Never pass numeric ids. Do not say listar.",
+                    "labels or values in Markdown **bold** (or other Markdown). No helpful closers. " +
+                    "The user gives a code; this tool resolves it to one hive. Prefer the active hive " +
+                    "when the code has one. A sole hive for the code — including perdida or vendida — " +
+                    "resolves without status; do not invent not-found for a sole inactive. Optional " +
+                    "status only disambiguates when an active hive and an inactive hive share the code. " +
+                    "A read does not ask for confirmation. Never pass numeric ids. Do not say listar.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -686,7 +688,7 @@ class ChatToolExecutor(
                     "code=null. startDate only if the user provided one (otherwise omit; server defaults " +
                     "to now). status defaults to desenvolvendo. Restate only tool JSON fields in plain " +
                     "text — never Markdown **bold** (or other Markdown) around labels/values; if code " +
-                    "is null say sem código; never invent a code. Never pass numeric ids.",
+                    "is null say sem código; never invent a code. No helpful closers. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(
@@ -728,7 +730,8 @@ class ChatToolExecutor(
                     "perdida/vendida — resolves without currentStatus. When the resolved hive is already " +
                     "inactive, ask once naming that status and call again with confirmed=true. Historico is " +
                     "appended by the use case, including when the status did not change; that is not a " +
-                    "question. Do not call create_colmeia for a status change. Never pass numeric ids.",
+                    "question. Do not call create_colmeia for a status change. Confirm the visit briefly — " +
+                    "no helpful closers. Never pass numeric ids.",
             parametersJsonSchema = mapOf(
                 "type" to "object",
                 "properties" to mapOf(

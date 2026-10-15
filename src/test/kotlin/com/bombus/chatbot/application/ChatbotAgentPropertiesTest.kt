@@ -21,6 +21,8 @@ class ChatbotAgentPropertiesTest {
             .doesNotContain("erro de cadastro")
             .doesNotContain("é só me avisar")
             .doesNotContain("se precisar de mais informações")
+            .doesNotContain("estou por aqui")
+            .doesNotContain("qualquer coisa é só chamar")
             .doesNotContain("experimente perguntar")
     }
 }

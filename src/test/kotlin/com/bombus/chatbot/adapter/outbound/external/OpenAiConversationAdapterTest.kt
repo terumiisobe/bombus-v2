@@ -79,10 +79,12 @@ class OpenAiConversationAdapterTest {
             .contains("cadastrar")
             .contains("registrar visita")
             .contains("é só me avisar!")
+            .contains("estou por aqui")
             .contains("Tom e estilo")
             .contains("Texto puro no WhatsApp")
             .contains("**negrito**")
             .contains("texto puro")
+            .contains("factual")
     }
 
     @Test
@@ -105,7 +107,7 @@ class OpenAiConversationAdapterTest {
     }
 
     @Test
-    fun `system prompt discourages pushy closers and requires first-turn capability overview`() {
+    fun `system prompt forbids helpful closers and requires first-turn capability overview`() {
         enqueueFinalReply("Oi! Posso listar, cadastrar, registrar visitas e contar suas colmeias.")
 
         adapter.complete(listOf(AgentMessage.User("oi")), tools)
@@ -114,8 +116,13 @@ class OpenAiConversationAdapterTest {
             .path("messages").path(0).path("content").asText()
         assertThat(system)
             .contains("histórico da conversa estiver vazio")
+            .contains("Proibido encerrar")
             .contains("é só me avisar!")
             .contains("se precisar de mais informações")
+            .contains("se precisar de mais alguma coisa, estou por aqui")
+            .contains("qualquer coisa é só chamar")
+            .contains("sem convite a perguntar mais")
+            .contains("Não acrescente fechamentos prestativos")
             .contains("Não repita esse overview em todo turno")
             .contains("registrar visita")
             .contains("detalhar")
