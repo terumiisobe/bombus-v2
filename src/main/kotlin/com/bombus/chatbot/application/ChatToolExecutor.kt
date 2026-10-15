@@ -18,6 +18,8 @@ import com.bombus.colmeia.application.port.inbound.ListColmeiaHistoryUseCase
 import com.bombus.colmeia.application.port.inbound.ListColmeiaVocabularyUseCase
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasQuery
 import com.bombus.colmeia.application.port.inbound.ListOwnedColmeiasUseCase
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationCommand
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationUseCase
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
 import com.bombus.colmeia.application.port.inbound.ResolveColmeiaIdUseCase
@@ -31,6 +33,7 @@ import com.bombus.colmeia.domain.StatusRef
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.stereotype.Component
+import java.math.BigDecimal
 import java.time.Instant
 
 /**
@@ -49,6 +52,7 @@ class ChatToolExecutor(
     private val createColmeia: CreateColmeiaUseCase,
     private val recordColmeiaStatus: RecordColmeiaStatusUseCase,
     private val deleteColmeia: DeleteColmeiaUseCase,
+    private val recordColmeiaLocation: RecordColmeiaLocationUseCase,
     private val objectMapper: ObjectMapper,
     private val countProperties: ColmeiaCountProperties,
     private val visitFormatter: FieldVisitReplyFormatter = FieldVisitReplyFormatter(),
@@ -63,6 +67,7 @@ class ChatToolExecutor(
         CREATE_COLMEIA_DEF,
         UPDATE_COLMEIA_DEF,
         DELETE_COLMEIA_DEF,
+        RECORD_COLMEIA_LOCATION_DEF,
     )
 
     fun execute(userId: Long, call: AssistantToolCall): ToolResultMessage {
@@ -76,6 +81,7 @@ class ChatToolExecutor(
                 ChatToolNames.CREATE_COLMEIA -> executeCreate(userId, call.argumentsJson)
                 ChatToolNames.UPDATE_COLMEIA -> executeUpdate(userId, call.argumentsJson)
                 ChatToolNames.DELETE_COLMEIA -> executeDelete(userId, call.argumentsJson)
+                ChatToolNames.RECORD_COLMEIA_LOCATION -> executeRecordLocation(userId, call.argumentsJson)
                 else -> errorJson("unknown_tool", "Unknown tool: ${call.name}")
             }
         } catch (ex: ColmeiaCommandError) {
@@ -377,6 +383,37 @@ class ChatToolExecutor(
         )
     }
 
+    private fun executeRecordLocation(userId: Long, argumentsJson: String): String {
+        val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
+        val code = args.optionalInt("code")
+            ?: return errorJson("missing_code", "code is required")
+        val latitude = args.optionalDecimal("latitude")
+            ?: return errorJson("missing_latitude", "latitude is required")
+        val longitude = args.optionalDecimal("longitude")
+            ?: return errorJson("missing_longitude", "longitude is required")
+        val hiveOutcome = resolveHive(userId, code, args.optionalString("status"))
+        if (hiveOutcome is ResolveHive.Failed) return hiveOutcome.errorJson
+        val hive = (hiveOutcome as ResolveHive.Ok).value
+        val reading = recordColmeiaLocation.record(
+            RecordColmeiaLocationCommand(
+                userId = userId,
+                colmeiaId = hive.colmeiaId,
+                latitude = latitude,
+                longitude = longitude,
+                accuracyMeters = args.optionalDecimal("accuracyMeters"),
+            ),
+        )
+        return objectMapper.writeValueAsString(
+            mapOf(
+                "registered" to true,
+                "code" to code,
+                "latitude" to reading.latitude,
+                "longitude" to reading.longitude,
+                "recordedAt" to reading.recordedAt.toString(),
+            ),
+        )
+    }
+
     private sealed class ResolveHive {
         data class Ok(val value: ResolvedColmeia) : ResolveHive()
         data class Failed(val errorJson: String) : ResolveHive()
@@ -495,6 +532,20 @@ class ChatToolExecutor(
         if (node.isNull || node.isMissingNode) return null
         val text = node.asText().takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) } ?: return null
         return runCatching { Instant.parse(text) }.getOrNull()
+    }
+
+    private fun JsonNode.optionalDecimal(field: String): BigDecimal? {
+        val node = path(field)
+        return when {
+            node.isNull || node.isMissingNode -> null
+            node.isNumber -> BigDecimal.valueOf(node.asDouble())
+            node.isTextual -> {
+                val text = node.asText().trim()
+                if (text.isEmpty() || text.equals("null", ignoreCase = true)) null
+                else runCatching { BigDecimal(text) }.getOrNull()
+            }
+            else -> null
+        }
     }
 
     private companion object {
@@ -735,6 +786,38 @@ class ChatToolExecutor(
                     ),
                 ),
                 "required" to listOf("code", "confirmed"),
+                "additionalProperties" to false,
+            ),
+        )
+
+        val RECORD_COLMEIA_LOCATION_DEF = ToolDefinition(
+            name = ChatToolNames.RECORD_COLMEIA_LOCATION,
+            description =
+                "Register GPS coordinates on one hive (registry location update, not a field visit). " +
+                    "Use when the user shares a WhatsApp location pin or states latitude/longitude for a " +
+                    "hive code. Prefer the active hive; a sole hive for the code — including already " +
+                    "perdida/vendida — resolves without status. Optional status only disambiguates when " +
+                    "active and inactive share the code. Appends a localizacao row (recorded_at). " +
+                    "If the code is unclear from the message or recent turns, ask which code before calling. " +
+                    "Never pass numeric hive ids.",
+            parametersJsonSchema = mapOf(
+                "type" to "object",
+                "properties" to mapOf(
+                    "code" to mapOf("type" to "integer", "description" to "Hive code to attach the location to"),
+                    "latitude" to mapOf("type" to "number", "description" to "Latitude from the location pin"),
+                    "longitude" to mapOf("type" to "number", "description" to "Longitude from the location pin"),
+                    "accuracyMeters" to mapOf(
+                        "type" to listOf("number", "null"),
+                        "description" to "Optional accuracy in meters when known; otherwise omit",
+                    ),
+                    "status" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to
+                            "Omit for a sole hive. Pass only when the user means the inactive sibling " +
+                            "that shares the code with an active one",
+                    ),
+                ),
+                "required" to listOf("code", "latitude", "longitude"),
                 "additionalProperties" to false,
             ),
         )

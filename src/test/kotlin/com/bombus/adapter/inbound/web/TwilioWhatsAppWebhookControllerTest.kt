@@ -61,6 +61,40 @@ class TwilioWhatsAppWebhookControllerTest(
     }
 
     @Test
+    fun `location pin form fields are forwarded onto IncomingMessage`() {
+        given(
+            handleIncomingMessage.handle(
+                IncomingMessage(
+                    phoneNumber = "+5511999999999",
+                    text = "",
+                    latitude = 37.7879277,
+                    longitude = -122.3937508,
+                    address = "375 Beale St, San Francisco, CA 94105",
+                    label = "Twilio Inc",
+                ),
+            ),
+        ).willReturn("Localização registrada.")
+        val params = linkedMapOf(
+            "From" to "whatsapp:+5511999999999",
+            "Body" to "",
+            "Latitude" to "37.7879277",
+            "Longitude" to "-122.3937508",
+            "Address" to "375 Beale St, San Francisco, CA 94105",
+            "Label" to "Twilio Inc",
+        )
+        val signature = twilioSignature(SIGNED_URL, params)
+
+        mockMvc.post(WEBHOOK_PATH) {
+            contentType = MediaType.APPLICATION_FORM_URLENCODED
+            header("X-Twilio-Signature", signature)
+            params.forEach { (k, v) -> param(k, v) }
+        }.andExpect {
+            status { isOk() }
+            content { string(org.hamcrest.Matchers.containsString("Localização registrada.")) }
+        }
+    }
+
+    @Test
     fun `invalid signature returns 403`() {
         val params = linkedMapOf("From" to "whatsapp:+5511999999999", "Body" to "oi")
 

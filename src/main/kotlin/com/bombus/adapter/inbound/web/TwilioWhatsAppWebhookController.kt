@@ -54,7 +54,16 @@ class TwilioWhatsAppWebhookController(
 
         val phoneNumber = params[FROM_PARAM].orEmpty().removePrefix(WHATSAPP_PREFIX)
         val body = params[BODY_PARAM].orEmpty()
-        val replyText = handleIncomingMessage.handle(IncomingMessage(phoneNumber, body))
+        val replyText = handleIncomingMessage.handle(
+            IncomingMessage(
+                phoneNumber = phoneNumber,
+                text = body,
+                latitude = params[LATITUDE_PARAM]?.toDoubleOrNull(),
+                longitude = params[LONGITUDE_PARAM]?.toDoubleOrNull(),
+                address = params[ADDRESS_PARAM]?.takeIf { it.isNotBlank() },
+                label = params[LABEL_PARAM]?.takeIf { it.isNotBlank() },
+            ),
+        )
 
         val twiml = MessagingResponse.Builder()
             .message(Message.Builder(replyText).build())
@@ -70,6 +79,10 @@ class TwilioWhatsAppWebhookController(
         const val TWIML_CONTENT_TYPE = "text/xml;charset=UTF-8"
         const val FROM_PARAM = "From"
         const val BODY_PARAM = "Body"
+        const val LATITUDE_PARAM = "Latitude"
+        const val LONGITUDE_PARAM = "Longitude"
+        const val ADDRESS_PARAM = "Address"
+        const val LABEL_PARAM = "Label"
         const val WHATSAPP_PREFIX = "whatsapp:"
     }
 }

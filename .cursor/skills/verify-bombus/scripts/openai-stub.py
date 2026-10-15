@@ -99,6 +99,23 @@ def completion(body):
             "content": None,
             "tool_calls": [tool_call("update_colmeia", {"code": code_from_text(text, 1), "status": "perdida"})],
         }
+    elif "localização whatsapp" in text or "latitude=" in text:
+        lat_m = re.search(r"latitude=(-?\d+(?:\.\d+)?)", text)
+        lng_m = re.search(r"longitude=(-?\d+(?:\.\d+)?)", text)
+        message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                tool_call(
+                    "record_colmeia_location",
+                    {
+                        "code": code_from_text(text, 1),
+                        "latitude": float(lat_m.group(1)) if lat_m else -23.55,
+                        "longitude": float(lng_m.group(1)) if lng_m else -46.63,
+                    },
+                )
+            ],
+        }
     elif any(k in text for k in ("atualizar", "mudar status", "visita", "acompanhamento")):
         message = {
             "role": "assistant",

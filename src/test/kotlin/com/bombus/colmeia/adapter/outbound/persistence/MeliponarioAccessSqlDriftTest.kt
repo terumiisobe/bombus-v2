@@ -12,6 +12,7 @@ class MeliponarioAccessSqlDriftTest {
         val fragmentSource = stripComments(readMain("MeliponarioAccessSql.kt"))
         val countSource = stripComments(readMain("ColmeiaCountAdapter.kt"))
         val ownedSource = stripComments(readMain("OwnedColmeiaAdapter.kt"))
+        val locationSource = stripComments(readMain("LocalizacaoAdapter.kt"))
 
         assertThat(fragmentSource).contains("meliponario_membro")
         assertThat(fragmentSource).contains("EXISTS")
@@ -20,11 +21,14 @@ class MeliponarioAccessSqlDriftTest {
         assertThat(countSource).contains("ACCESSIBLE_COLMEIA")
         assertThat(ownedSource).contains("ACCESSIBLE_COLMEIA")
         assertThat(ownedSource).contains("ACCESSIBLE_MELIPONARIO")
+        assertThat(locationSource).contains("ACCESSIBLE_COLMEIA")
 
         assertThat(countSource).doesNotContain("owner_id")
         assertThat(ownedSource).doesNotContain("owner_id")
+        assertThat(locationSource).doesNotContain("owner_id")
         assertThat(countSource).doesNotContain("meliponario_membro")
         assertThat(ownedSource).doesNotContain("meliponario_membro")
+        assertThat(locationSource).doesNotContain("meliponario_membro")
     }
 
     private fun readMain(fileName: String): String {

@@ -34,9 +34,12 @@ import com.bombus.colmeia.domain.ColmeiaDetail
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaCommand
 import com.bombus.colmeia.application.port.inbound.DeleteColmeiaUseCase
 import com.bombus.colmeia.application.port.inbound.DeletedColmeia
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationCommand
+import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationUseCase
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
 import com.bombus.colmeia.application.ColmeiaCountProperties
+import com.bombus.colmeia.domain.LocalizacaoReading
 import com.bombus.colmeia.domain.ColmeiaCount
 import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
@@ -243,6 +246,31 @@ class HandleIncomingWhatsAppMessageServiceTest {
         assertEquals(now.plus(Duration.ofMinutes(15)), saved.expiresAt)
     }
 
+    @Test
+    fun `WhatsApp location pin enriches empty Body for the agent and session`() {
+        val session = RecordingSessionPort()
+        val ai = FakeConversationAi(listOf(AgentCompletion.FinalReply("Localização anotada")))
+        val service = service(ai = ai, session = session)
+
+        val reply = service.handle(
+            IncomingMessage(
+                phoneNumber = PHONE,
+                text = "",
+                latitude = -23.55052,
+                longitude = -46.633308,
+                label = "Apiário",
+            ),
+        )
+
+        assertEquals("Localização anotada", reply)
+        val userText = (ai.lastMessages.last { it is AgentMessage.User } as AgentMessage.User).text
+        assertTrue(userText.contains("[localização WhatsApp]"))
+        assertTrue(userText.contains("latitude=-23.55052"))
+        assertTrue(userText.contains("longitude=-46.633308"))
+        assertTrue(userText.contains("label=Apiário"))
+        assertEquals(userText, session.saved!!.context.recentTurns.first { it.role == ConversationRole.USER }.text)
+    }
+
     private fun service(
         resolution: CustomerResolution = CustomerResolution.Resolved(
             Customer(whatsappUserId = WHATSAPP_USER_ID, userId = USER_ID, displayName = "Ana"),
@@ -261,6 +289,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
             createColmeia = NoopCreate,
             recordColmeiaStatus = NoopRecordStatus,
             deleteColmeia = NoopDelete,
+            recordColmeiaLocation = NoopRecordLocation,
             objectMapper = objectMapper,
             countProperties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida")),
         )
@@ -354,6 +383,11 @@ class HandleIncomingWhatsAppMessageServiceTest {
     private object NoopDelete : DeleteColmeiaUseCase {
         override fun delete(command: DeleteColmeiaCommand): DeletedColmeia =
             error("delete not used in this test")
+    }
+
+    private object NoopRecordLocation : RecordColmeiaLocationUseCase {
+        override fun record(command: RecordColmeiaLocationCommand): LocalizacaoReading =
+            error("record location not used in this test")
     }
 
     private companion object {
