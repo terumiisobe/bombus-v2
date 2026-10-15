@@ -768,6 +768,8 @@ class ChatToolExecutorTest {
         assertTrue(detailDef.description.contains("sole hive", ignoreCase = true))
         assertTrue(detailDef.description.contains("without status", ignoreCase = true))
         assertTrue(detailDef.description.contains("do not invent not-found", ignoreCase = true))
+        assertTrue(detailDef.description.contains("plain text", ignoreCase = true))
+        assertTrue(detailDef.description.contains("**bold**"))
         val detailStatus = (detailDef.parametersJsonSchema["properties"] as Map<*, *>)["status"] as Map<*, *>
         assertTrue(detailStatus["description"].toString().contains("Omit for a sole hive"))
 
@@ -783,6 +785,8 @@ class ChatToolExecutorTest {
         assertTrue(createDef.description.contains("confirmed=true"))
         assertTrue(createDef.description.contains("sem código"))
         assertTrue(createDef.description.contains("never invent", ignoreCase = true))
+        assertTrue(createDef.description.contains("plain text", ignoreCase = true))
+        assertTrue(createDef.description.contains("**bold**"))
         val props = createDef.parametersJsonSchema["properties"] as Map<*, *>
         assertTrue(props.containsKey("code"))
         assertTrue(props.containsKey("confirmed"))

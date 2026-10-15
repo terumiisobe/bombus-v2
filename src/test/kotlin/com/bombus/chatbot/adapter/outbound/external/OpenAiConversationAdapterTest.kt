@@ -80,6 +80,28 @@ class OpenAiConversationAdapterTest {
             .contains("registrar visita")
             .contains("é só me avisar!")
             .contains("Tom e estilo")
+            .contains("Texto puro no WhatsApp")
+            .contains("**negrito**")
+            .contains("texto puro")
+    }
+
+    @Test
+    fun `system prompt forbids Markdown bold in create and detail replies`() {
+        enqueueFinalReply("Colmeia cadastrada: código 12, mandacaia.")
+
+        adapter.complete(listOf(AgentMessage.User("cadastrar")), tools)
+
+        val system = objectMapper.readTree(server.takeRequest().body.readUtf8())
+            .path("messages").path(0).path("content").asText()
+        assertThat(system)
+            .contains("Texto puro no WhatsApp")
+            .contains("nunca use Markdown")
+            .contains("**negrito**")
+            .contains("código 12")
+            .contains("sem `**`")
+            .contains("texto puro (sem Markdown")
+            .contains("detail_colmeia")
+            .contains("create_colmeia")
     }
 
     @Test
