@@ -38,6 +38,7 @@ class MeliponarioMapControllerTest(
                 MeliponarioMapView(
                     meliponarioId = 10,
                     farmName = "Meliponário Isobe",
+                    address = "Estrada do Mel 123, São Paulo - SP",
                     hives = listOf(
                         MeliponarioMapHive(
                             code = 12,
@@ -70,6 +71,7 @@ class MeliponarioMapControllerTest(
         }.andExpect {
             status { isOk() }
             jsonPath("$.farmName") { value("Meliponário Isobe") }
+            jsonPath("$.address") { value("Estrada do Mel 123, São Paulo - SP") }
             jsonPath("$.updatedAt") { value("2026-10-09T15:00:00Z") }
             jsonPath("$.hives[0].code") { value("12") }
             jsonPath("$.hives[0].lat") { value(-23.9478) }

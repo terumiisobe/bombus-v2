@@ -53,8 +53,8 @@ class MeliponarioMapAdapterIntegrationTest {
     fun seed() {
         insertUsuario(OWNER, "o@x.test")
         insertUsuario(OTHER, "p@x.test")
-        insertMeliponario(MEL, OWNER, "Meliponário Isobe")
-        insertMeliponario(MEL_OTHER, OTHER, "Outro")
+        insertMeliponario(MEL, OWNER, "Meliponário Isobe", "Rua das Abelhas 100")
+        insertMeliponario(MEL_OTHER, OTHER, "Outro", "addr")
     }
 
     @Test
@@ -97,6 +97,7 @@ class MeliponarioMapAdapterIntegrationTest {
         val view = mapAdapter.loadForMember(OWNER, MEL)!!
 
         assertThat(view.farmName).isEqualTo("Meliponário Isobe")
+        assertThat(view.address).isEqualTo("Rua das Abelhas 100")
         assertThat(view.hives).hasSize(2)
         val first = view.hives.first { it.code == 12 }
         assertThat(first.statusName).isEqualTo("estavel")
@@ -119,6 +120,7 @@ class MeliponarioMapAdapterIntegrationTest {
     fun `empty accessible yard returns farm with no hives`() {
         val view = mapAdapter.loadForMember(OWNER, MEL)!!
         assertThat(view.farmName).isEqualTo("Meliponário Isobe")
+        assertThat(view.address).isEqualTo("Rua das Abelhas 100")
         assertThat(view.hives).isEmpty()
     }
 
@@ -129,10 +131,10 @@ class MeliponarioMapAdapterIntegrationTest {
         )
     }
 
-    private fun insertMeliponario(id: Long, owner: Long, name: String) {
+    private fun insertMeliponario(id: Long, owner: Long, name: String, address: String) {
         jdbcTemplate.update(
             "INSERT INTO meliponario (id, name, address, owner_id) VALUES (?, ?, ?, ?)",
-            id, name, "addr", owner,
+            id, name, address, owner,
         )
         jdbcTemplate.update(
             "INSERT INTO meliponario_membro (usuario_id, meliponario_id) VALUES (?, ?)",
