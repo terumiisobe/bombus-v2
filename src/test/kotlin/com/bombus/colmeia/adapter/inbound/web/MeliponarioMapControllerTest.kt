@@ -112,7 +112,7 @@ class MeliponarioMapControllerTest(
     }
 
     @Test
-    fun `preflight from local Vite origin allows GET and X-User-Id`() {
+    fun `preflight from local Vite origin allows GET OPTIONS and X-User-Id`() {
         mockMvc.options("/v1/meliponarios/10") {
             header("Origin", "http://localhost:5173")
             header("Access-Control-Request-Method", "GET")
@@ -121,6 +121,22 @@ class MeliponarioMapControllerTest(
             status { isOk() }
             header { string("Access-Control-Allow-Origin", "http://localhost:5173") }
             header { string("Access-Control-Allow-Methods", containsString("GET")) }
+            header { string("Access-Control-Allow-Methods", containsString("OPTIONS")) }
+            header { string("Access-Control-Allow-Headers", containsString("X-User-Id")) }
+        }
+    }
+
+    @Test
+    fun `preflight from hosted Render frontend allows GET and X-User-Id`() {
+        mockMvc.options("/v1/meliponarios/10") {
+            header("Origin", "https://bombus-frontend.onrender.com")
+            header("Access-Control-Request-Method", "GET")
+            header("Access-Control-Request-Headers", "X-User-Id")
+        }.andExpect {
+            status { isOk() }
+            header { string("Access-Control-Allow-Origin", "https://bombus-frontend.onrender.com") }
+            header { string("Access-Control-Allow-Methods", containsString("GET")) }
+            header { string("Access-Control-Allow-Methods", containsString("OPTIONS")) }
             header { string("Access-Control-Allow-Headers", containsString("X-User-Id")) }
         }
     }

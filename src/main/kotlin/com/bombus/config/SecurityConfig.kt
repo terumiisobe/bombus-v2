@@ -14,8 +14,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
  * its real authentication is the X-Twilio-Signature check in the web adapter, so it is
  * permitted at the Spring Security level. springdoc paths are kept open for API docs.
  *
- * Map-UI CORS is scoped to the meliponarios API paths for local Vite origins only — the
- * webhook path is intentionally not CORS-enabled (Twilio does not browser-preflight).
+ * Map-UI CORS is scoped to the meliponarios API paths (local Vite + hosted frontend) —
+ * the webhook path is intentionally not CORS-enabled (Twilio does not browser-preflight).
  */
 @Configuration
 class SecurityConfig {
@@ -38,13 +38,14 @@ class SecurityConfig {
     }
 
     /**
-     * Allows the local map frontend (`npm run dev`) to call the map snapshot API with the
-     * interim `X-User-Id` header. Credentials are off — auth is the custom header, not cookies.
+     * Allows the map frontend (local Vite and hosted Render app) to call the map snapshot
+     * API with the interim `X-User-Id` header. Methods are GET + OPTIONS only. Credentials
+     * are off — auth is the custom header, not cookies.
      */
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val mapUi = CorsConfiguration().apply {
-            allowedOrigins = LOCAL_VITE_ORIGINS
+            allowedOrigins = MAP_UI_ORIGINS
             allowedMethods = listOf("GET", "OPTIONS")
             allowedHeaders = listOf("X-User-Id", "Accept", "Content-Type")
             allowCredentials = false
@@ -56,9 +57,10 @@ class SecurityConfig {
     }
 
     companion object {
-        val LOCAL_VITE_ORIGINS = listOf(
+        val MAP_UI_ORIGINS = listOf(
             "http://localhost:5173",
             "http://localhost:3000",
+            "https://bombus-frontend.onrender.com",
         )
     }
 }
