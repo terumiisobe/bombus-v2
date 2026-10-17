@@ -15,8 +15,10 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.bean.override.mockito.MockitoBean
+import org.hamcrest.Matchers.containsString
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.options
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
@@ -106,6 +108,41 @@ class MeliponarioMapControllerTest(
         }.andExpect {
             status { isNotFound() }
             jsonPath("$.title") { value("Not Found") }
+        }
+    }
+
+    @Test
+    fun `preflight from local Vite origin allows GET and X-User-Id`() {
+        mockMvc.options("/v1/meliponarios/10") {
+            header("Origin", "http://localhost:5173")
+            header("Access-Control-Request-Method", "GET")
+            header("Access-Control-Request-Headers", "X-User-Id")
+        }.andExpect {
+            status { isOk() }
+            header { string("Access-Control-Allow-Origin", "http://localhost:5173") }
+            header { string("Access-Control-Allow-Methods", containsString("GET")) }
+            header { string("Access-Control-Allow-Headers", containsString("X-User-Id")) }
+        }
+    }
+
+    @Test
+    fun `GET with Vite Origin echoes Access-Control-Allow-Origin`() {
+        given(getMeliponarioMap.get(GetMeliponarioMapQuery(userId = 1, meliponarioId = 10)))
+            .willReturn(
+                MeliponarioMapView(
+                    meliponarioId = 10,
+                    farmName = "Meliponário Isobe",
+                    address = "Estrada do Mel 123, São Paulo - SP",
+                    hives = emptyList(),
+                ),
+            )
+
+        mockMvc.get("/v1/meliponarios/10") {
+            header(MeliponarioMapController.USER_ID_HEADER, "1")
+            header("Origin", "http://localhost:3000")
+        }.andExpect {
+            status { isOk() }
+            header { string("Access-Control-Allow-Origin", "http://localhost:3000") }
         }
     }
 }

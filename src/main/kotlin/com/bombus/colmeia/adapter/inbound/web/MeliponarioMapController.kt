@@ -50,7 +50,7 @@ class MeliponarioMapController(
             required = true,
             description = "Interim caller identity: usuario.id (membership checked in SQL). Replace with JWT later.",
         )
-        @RequestHeader(USER_ID_HEADER) userIdHeader: String?,
+        @RequestHeader(name = USER_ID_HEADER, required = false) userIdHeader: String?,
     ): MeliponarioMapResponse {
         val userId = parseUserId(userIdHeader)
         return getMeliponarioMap
