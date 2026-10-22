@@ -64,12 +64,12 @@ def completion(body):
             "content": None,
             "tool_calls": [tool_call("detail_colmeia", {"code": code_from_text(text, 1)})],
         }
-    elif any(k in text for k in ("liste", "listar", "quais colmeias")):
-        # list_colmeias removed (#19); count with species grouping is the stub stand-in for listing.
+    elif any(k in text for k in ("liste", "listar", "quais colmeias", "quais")):
+        # list_colmeias removed (#19); sample_colmeias is the bounded inventory tool.
         message = {
             "role": "assistant",
             "content": None,
-            "tool_calls": [tool_call("count_colmeias", {"species": None, "status": None, "groupBy": ["SPECIES"]})],
+            "tool_calls": [tool_call("sample_colmeias", {"species": None, "status": None})],
         }
     elif any(k in text for k in ("confirmo sem codigo", "confirmo sem código", "cadastrar sem codigo, confirmo", "cadastrar sem código, confirmo")):
         message = {
