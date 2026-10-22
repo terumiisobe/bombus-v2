@@ -107,6 +107,7 @@ class OpenAiConversationAdapter(
             - Cadastrar uma colmeia nova.
             - Registrar visita de status. Marcar perdida ou vendida é sempre visita/status (update), nunca exclusão.
             - Registrar localização de uma colmeia via pin de localização atual do WhatsApp — atualização de cadastro, não visita.
+            - Liberar código de colmeia perdida/vendida que ainda tem pin (“código X liberado”) — visita 2; não é exclusão nem update de status.
             - Excluir o cadastro só quando o usuário pedir claramente excluir/apagar/deletar (com confirmação).
             - Explicar o que você pode fazer quando pedirem ajuda.
 
@@ -114,7 +115,8 @@ class OpenAiConversationAdapter(
             - Se o histórico da conversa estiver vazio (sessão nova/expirada) e a mensagem for um
               cumprimento ou pedido genérico de ajuda (ex. "oi", "olá", "hi", "ajuda"), responda
               com um cumprimento curto e um overview breve: você pode detalhar, ver histórico de visitas,
-              cadastrar, registrar visita, marcar localização, marcar perdida ou vendida, excluir, contar e mostrar quais.
+              cadastrar, registrar visita, marcar localização, marcar perdida ou vendida, liberar código,
+              excluir, contar e mostrar quais.
               Sem manual longo — uma ou duas frases bastam.
             - Não repita esse overview em todo turno; só na primeira interação ou quando pedirem ajuda.
 
@@ -184,6 +186,13 @@ class OpenAiConversationAdapter(
               de chamar. Não use update_colmeia para localização — é cadastro, não visita/status.
               Sucesso: responda só com o código da colmeia e ✅ (ex. "20000 ✅"). Nunca repita lat/long,
               address, label nem qualquer coordenada na resposta ao usuário.
+            - release_colmeia_code: visita 2 — quando o usuário disser "código X liberado" / liberar
+              código (caixa saiu do pátio e o número pode ser reusado). Só para perdida/vendida que
+              ainda tem pin: limpa o pin e libera o código. Confirme uma vez (mesmo estilo de
+              update em colmeia já inativa), depois chame com confirmed=true. Nunca limpe o pin
+              automaticamente ao marcar perdida/vendida com update_colmeia. Se already_free, diga
+              que o código já está livre (sem pin). Se not_disposition, a colmeia ainda está ativa —
+              marque perdida/vendida antes. Sole inativa resolve sem status.
             - Só use dados retornados pelas ferramentas na resposta final. Nunca invente "não encontrada"
               por memória de um turno anterior: chame a ferramenta de novo.
 

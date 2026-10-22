@@ -18,4 +18,12 @@ sealed class ColmeiaCommandError(message: String) : Exception(message) {
     class UnknownStatus : ColmeiaCommandError("Unknown statusId")
     class InvalidLimit : ColmeiaCommandError("limit must be between 1 and 50")
     class ConfirmationRequired : ColmeiaCommandError("Delete requires confirmed=true after user confirmation")
+    /** Visit 2 applies only to perdida/vendida. */
+    class NotDispositionStatus : ColmeiaCommandError(
+        "Code liberation applies only to colmeias perdida or vendida",
+    )
+    /** Visit 2 N/A: never-pinned at mark or already cleared — code already free. */
+    class NoLivePinToClear : ColmeiaCommandError(
+        "Colmeia has no live pin; code is already free to reuse",
+    )
 }

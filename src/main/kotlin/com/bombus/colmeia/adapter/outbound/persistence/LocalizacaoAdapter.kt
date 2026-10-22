@@ -2,6 +2,7 @@ package com.bombus.colmeia.adapter.outbound.persistence
 
 import com.bombus.colmeia.application.port.outbound.AppendLocalizacao
 import com.bombus.colmeia.application.port.outbound.AppendLocalizacaoClear
+import com.bombus.colmeia.application.port.outbound.LoadLocalizacaoPort
 import com.bombus.colmeia.application.port.outbound.SaveLocalizacaoPort
 import com.bombus.colmeia.domain.LocalizacaoReading
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
@@ -13,12 +14,12 @@ import java.sql.Timestamp
 
 /**
  * JDBC adapter for append-only [localizacao] rows (live pins and clear events).
- * Membership is enforced on insert via [ACCESSIBLE_COLMEIA].
+ * Membership is enforced on insert/select via [ACCESSIBLE_COLMEIA].
  */
 @Component
 class LocalizacaoAdapter(
     private val jdbc: NamedParameterJdbcTemplate,
-) : SaveLocalizacaoPort {
+) : SaveLocalizacaoPort, LoadLocalizacaoPort {
 
     override fun append(command: AppendLocalizacao): LocalizacaoReading? =
         insertRow(
@@ -37,6 +38,24 @@ class LocalizacaoAdapter(
             longitude = null,
             recordedAt = command.recordedAt,
         )
+
+    override fun findCurrent(userId: Long, colmeiaId: Long): LocalizacaoReading? {
+        val rows = jdbc.query(
+            FIND_CURRENT_SQL,
+            MapSqlParameterSource()
+                .addValue("userId", userId)
+                .addValue("colmeiaId", colmeiaId),
+        ) { rs, _ ->
+            LocalizacaoReading(
+                id = rs.getLong("id"),
+                colmeiaId = colmeiaId,
+                latitude = rs.getBigDecimal("latitude"),
+                longitude = rs.getBigDecimal("longitude"),
+                recordedAt = rs.getTimestamp("recorded_at").toInstant(),
+            )
+        }
+        return rows.firstOrNull()
+    }
 
     private fun insertRow(
         userId: Long,
@@ -75,6 +94,16 @@ class LocalizacaoAdapter(
             FROM colmeia c
             WHERE c.id = :colmeiaId
               AND $ACCESSIBLE_COLMEIA
+        """.trimIndent()
+
+        val FIND_CURRENT_SQL = """
+            SELECT l.id, l.latitude, l.longitude, l.recorded_at
+            FROM localizacao l
+            JOIN colmeia c ON c.id = l.colmeia_id
+            WHERE l.colmeia_id = :colmeiaId
+              AND $ACCESSIBLE_COLMEIA
+            ORDER BY l.recorded_at DESC, l.id DESC
+            LIMIT 1
         """.trimIndent()
     }
 }
