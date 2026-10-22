@@ -38,6 +38,8 @@ import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationUseCase
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
+import com.bombus.colmeia.application.port.inbound.ReleaseColmeiaCodeCommand
+import com.bombus.colmeia.application.port.inbound.ReleaseColmeiaCodeUseCase
 import com.bombus.colmeia.application.ColmeiaCountProperties
 import com.bombus.colmeia.domain.LocalizacaoReading
 import com.bombus.colmeia.domain.ColmeiaCount
@@ -290,6 +292,7 @@ class HandleIncomingWhatsAppMessageServiceTest {
             recordColmeiaStatus = NoopRecordStatus,
             deleteColmeia = NoopDelete,
             recordColmeiaLocation = NoopRecordLocation,
+            releaseColmeiaCode = NoopReleaseCode,
             objectMapper = objectMapper,
             countProperties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida")),
         )
@@ -388,6 +391,11 @@ class HandleIncomingWhatsAppMessageServiceTest {
     private object NoopRecordLocation : RecordColmeiaLocationUseCase {
         override fun record(command: RecordColmeiaLocationCommand): LocalizacaoReading =
             error("record location not used in this test")
+    }
+
+    private object NoopReleaseCode : ReleaseColmeiaCodeUseCase {
+        override fun release(command: ReleaseColmeiaCodeCommand): LocalizacaoReading =
+            error("release code not used in this test")
     }
 
     private companion object {

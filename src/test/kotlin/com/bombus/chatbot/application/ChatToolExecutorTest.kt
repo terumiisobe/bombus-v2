@@ -24,7 +24,10 @@ import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationUseCase
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
+import com.bombus.colmeia.application.port.inbound.ReleaseColmeiaCodeCommand
+import com.bombus.colmeia.application.port.inbound.ReleaseColmeiaCodeUseCase
 import com.bombus.colmeia.application.ColmeiaCountProperties
+import com.bombus.colmeia.domain.ColmeiaCommandError
 import com.bombus.colmeia.domain.ColmeiaCount
 import com.bombus.colmeia.domain.ColmeiaStatusHistoryEntry
 import com.bombus.colmeia.domain.ColmeiaSummary
@@ -53,6 +56,7 @@ class ChatToolExecutorTest {
     private val update = RecordingUpdate()
     private val delete = RecordingDelete()
     private val location = RecordingLocation()
+    private val release = RecordingRelease()
     private val executor = ChatToolExecutor(
         countColmeias = count,
         listOwnedColmeias = sample,
@@ -64,6 +68,7 @@ class ChatToolExecutorTest {
         recordColmeiaStatus = update,
         deleteColmeia = delete,
         recordColmeiaLocation = location,
+        releaseColmeiaCode = release,
         objectMapper = objectMapper,
         countProperties = ColmeiaCountProperties(defaultExcludedStatuses = listOf("perdida", "vendida")),
     )
@@ -655,6 +660,7 @@ class ChatToolExecutorTest {
                 ChatToolNames.UPDATE_COLMEIA,
                 ChatToolNames.DELETE_COLMEIA,
                 ChatToolNames.RECORD_COLMEIA_LOCATION,
+                ChatToolNames.RELEASE_COLMEIA_CODE,
             ),
             names,
         )
@@ -822,6 +828,94 @@ class ChatToolExecutorTest {
         assertTrue(props.containsKey("startDate"))
     }
 
+    @Test
+    fun `release_colmeia_code of disposed hive asks once before clearing`() {
+        resolve.next = ResolvedColmeia(colmeiaId = 100L, inactive = true, statusName = "vendida")
+        val asked = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_rel_ask",
+                name = ChatToolNames.RELEASE_COLMEIA_CODE,
+                argumentsJson = """{"code":7}""",
+            ),
+        )
+        val askedJson = objectMapper.readTree(asked.contentJson)
+        assertEquals("confirmation_required", askedJson.path("error").asText())
+        assertTrue(askedJson.path("message").asText().contains("vendida"))
+        assertTrue(askedJson.path("message").asText().contains("liberar"))
+        assertNull(release.lastCommand)
+
+        release.result = LocalizacaoReading(
+            id = 9L,
+            colmeiaId = 100L,
+            latitude = null,
+            longitude = null,
+            recordedAt = Instant.parse("2026-10-22T12:00:00Z"),
+        )
+        val done = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_rel_yes",
+                name = ChatToolNames.RELEASE_COLMEIA_CODE,
+                argumentsJson = """{"code":7,"confirmed":true}""",
+            ),
+        )
+        assertEquals(ReleaseColmeiaCodeCommand(userId = 42L, colmeiaId = 100L), release.lastCommand)
+        val json = objectMapper.readTree(done.contentJson)
+        assertTrue(json.path("released").asBoolean())
+        assertEquals(7, json.path("code").asInt())
+        assertEquals("vendida", json.path("status").asText())
+    }
+
+    @Test
+    fun `release_colmeia_code rejects active hive without calling use case`() {
+        resolve.next = ResolvedColmeia(colmeiaId = 100L, inactive = false, statusName = "estavel")
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_rel_active",
+                name = ChatToolNames.RELEASE_COLMEIA_CODE,
+                argumentsJson = """{"code":7,"confirmed":true}""",
+            ),
+        )
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals("not_disposition", json.path("error").asText())
+        assertNull(release.lastCommand)
+    }
+
+    @Test
+    fun `release_colmeia_code maps never-pinned to already_free`() {
+        resolve.next = ResolvedColmeia(colmeiaId = 100L, inactive = true, statusName = "perdida")
+        release.throwNoLivePin = true
+        val result = executor.execute(
+            userId = 42L,
+            call = AssistantToolCall(
+                id = "call_rel_free",
+                name = ChatToolNames.RELEASE_COLMEIA_CODE,
+                argumentsJson = """{"code":7,"confirmed":true}""",
+            ),
+        )
+        val json = objectMapper.readTree(result.contentJson)
+        assertEquals("already_free", json.path("error").asText())
+        assertTrue(json.path("message").asText().contains("sem pin"))
+        assertEquals(100L, release.lastCommand?.colmeiaId)
+    }
+
+    @Test
+    fun `release_colmeia_code definition covers liberado phrase and soft confirm`() {
+        val def = executor.definitions().first { it.name == ChatToolNames.RELEASE_COLMEIA_CODE }
+        assertTrue(def.description.contains("código X liberado", ignoreCase = true))
+        assertTrue(def.description.contains("confirmed=true"))
+        assertTrue(def.description.contains("already_free"))
+        assertTrue(def.description.contains("Never auto-clear", ignoreCase = true))
+        assertTrue(def.description.contains("update_colmeia"))
+        assertTrue(def.description.contains("no helpful closers", ignoreCase = true))
+        val props = def.parametersJsonSchema["properties"] as Map<*, *>
+        assertTrue(props.containsKey("code"))
+        assertTrue(props.containsKey("confirmed"))
+        assertTrue(props.containsKey("status"))
+    }
+
     private class RecordingCount(var result: ColmeiaCount) : CountColmeiasUseCase {
         var lastQuery: CountColmeiasQuery? = null
             private set
@@ -909,6 +1003,19 @@ class ChatToolExecutorTest {
 
         override fun record(command: RecordColmeiaLocationCommand): LocalizacaoReading {
             lastCommand = command
+            return result
+        }
+    }
+
+    private class RecordingRelease : ReleaseColmeiaCodeUseCase {
+        lateinit var result: LocalizacaoReading
+        var throwNoLivePin = false
+        var lastCommand: ReleaseColmeiaCodeCommand? = null
+            private set
+
+        override fun release(command: ReleaseColmeiaCodeCommand): LocalizacaoReading {
+            lastCommand = command
+            if (throwNoLivePin) throw ColmeiaCommandError.NoLivePinToClear()
             return result
         }
     }

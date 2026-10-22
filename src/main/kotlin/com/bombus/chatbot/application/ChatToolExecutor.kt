@@ -22,6 +22,8 @@ import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationUseCase
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusCommand
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaStatusUseCase
+import com.bombus.colmeia.application.port.inbound.ReleaseColmeiaCodeCommand
+import com.bombus.colmeia.application.port.inbound.ReleaseColmeiaCodeUseCase
 import com.bombus.colmeia.application.port.inbound.ResolveColmeiaIdUseCase
 import com.bombus.colmeia.application.port.inbound.ResolveColmeiaQuery
 import com.bombus.colmeia.application.port.inbound.ResolvedColmeia
@@ -53,6 +55,7 @@ class ChatToolExecutor(
     private val recordColmeiaStatus: RecordColmeiaStatusUseCase,
     private val deleteColmeia: DeleteColmeiaUseCase,
     private val recordColmeiaLocation: RecordColmeiaLocationUseCase,
+    private val releaseColmeiaCode: ReleaseColmeiaCodeUseCase,
     private val objectMapper: ObjectMapper,
     private val countProperties: ColmeiaCountProperties,
     private val visitFormatter: FieldVisitReplyFormatter = FieldVisitReplyFormatter(),
@@ -68,6 +71,7 @@ class ChatToolExecutor(
         UPDATE_COLMEIA_DEF,
         DELETE_COLMEIA_DEF,
         RECORD_COLMEIA_LOCATION_DEF,
+        RELEASE_COLMEIA_CODE_DEF,
     )
 
     fun execute(userId: Long, call: AssistantToolCall): ToolResultMessage {
@@ -82,6 +86,7 @@ class ChatToolExecutor(
                 ChatToolNames.UPDATE_COLMEIA -> executeUpdate(userId, call.argumentsJson)
                 ChatToolNames.DELETE_COLMEIA -> executeDelete(userId, call.argumentsJson)
                 ChatToolNames.RECORD_COLMEIA_LOCATION -> executeRecordLocation(userId, call.argumentsJson)
+                ChatToolNames.RELEASE_COLMEIA_CODE -> executeReleaseCode(userId, call.argumentsJson)
                 else -> errorJson("unknown_tool", "Unknown tool: ${call.name}")
             }
         } catch (ex: ColmeiaCommandError) {
@@ -409,6 +414,46 @@ class ChatToolExecutor(
                 "registered" to true,
                 "code" to code,
                 "replyHint" to "$code ✅",
+            ),
+        )
+    }
+
+    private fun executeReleaseCode(userId: Long, argumentsJson: String): String {
+        val args = objectMapper.readTree(argumentsJson.ifBlank { "{}" })
+        val code = args.optionalInt("code")
+            ?: return errorJson("missing_code", "code is required")
+        val hiveOutcome = resolveHive(userId, code, args.optionalString("status"))
+        if (hiveOutcome is ResolveHive.Failed) return hiveOutcome.errorJson
+        val hive = (hiveOutcome as ResolveHive.Ok).value
+        if (!hive.inactive) {
+            return errorJson(
+                "not_disposition",
+                "Liberar código só vale para colmeias perdida ou vendida.",
+            )
+        }
+        // Soft-exit style: already inactive → ask once, then confirmed=true.
+        if (!args.path("confirmed").asBoolean(false)) {
+            return errorJson(
+                "confirmation_required",
+                "A colmeia $code está ${hive.statusName}. Confirme para liberar o código.",
+            )
+        }
+        try {
+            releaseColmeiaCode.release(
+                ReleaseColmeiaCodeCommand(userId = userId, colmeiaId = hive.colmeiaId),
+            )
+        } catch (ex: ColmeiaCommandError.NoLivePinToClear) {
+            // Never-pinned at mark or already cleared — visit 2 is N/A.
+            return errorJson(
+                "already_free",
+                "A colmeia $code já está sem pin; o código já pode ser reutilizado.",
+            )
+        }
+        return objectMapper.writeValueAsString(
+            mapOf(
+                "released" to true,
+                "code" to code,
+                "status" to hive.statusName,
             ),
         )
     }
@@ -831,6 +876,41 @@ class ChatToolExecutor(
                     ),
                 ),
                 "required" to listOf("code", "latitude", "longitude"),
+                "additionalProperties" to false,
+            ),
+        )
+
+        val RELEASE_COLMEIA_CODE_DEF = ToolDefinition(
+            name = ChatToolNames.RELEASE_COLMEIA_CODE,
+            description =
+                "Visit 2 — liberate a hive code after soft exit: use when the user says código X " +
+                    "liberado / liberar código (or clear that the box left the yard and the number can " +
+                    "be reused). Only for perdida/vendida that still have a live map pin: clears the pin " +
+                    "and frees the code. Soft-confirm once (same style as update on an inactive hive), " +
+                    "then call again with confirmed=true. Never auto-clear on update_colmeia. Not for " +
+                    "active hives (use update_colmeia to mark perdida/vendida first). If the disposed " +
+                    "hive was never pinned, tool returns already_free — say the code is already free, " +
+                    "no pin to clear. Prefer the inactive hive; a sole perdida/vendida resolves without " +
+                    "status; pass status only when an active sibling shares the code. Restate briefly " +
+                    "(código liberado) — no helpful closers. Never pass numeric ids.",
+            parametersJsonSchema = mapOf(
+                "type" to "object",
+                "properties" to mapOf(
+                    "code" to mapOf("type" to "integer", "description" to "Hive code to liberate"),
+                    "status" to mapOf(
+                        "type" to listOf("string", "null"),
+                        "description" to
+                            "Omit for a sole hive. Pass only when liberating the inactive sibling that " +
+                            "shares the code with an active one",
+                    ),
+                    "confirmed" to mapOf(
+                        "type" to "boolean",
+                        "description" to
+                            "True only after the user confirmed liberating the code of an already " +
+                            "perdida/vendida hive",
+                    ),
+                ),
+                "required" to listOf("code"),
                 "additionalProperties" to false,
             ),
         )
