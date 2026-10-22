@@ -51,4 +51,20 @@ class HiveLocationPresenceTest {
         assertFalse(holdsCodeForReuse(isDispositionStatus = true, presence = presence))
         assertTrue(holdsCodeForReuse(isDispositionStatus = false, presence = presence))
     }
+
+    @Test
+    fun `map includes disposed only with live pin`() {
+        val pinned = presenceFromLatest(
+            LocalizacaoReading(1L, 10L, BigDecimal("-23.5"), BigDecimal("-46.6"), at),
+        )
+        val cleared = presenceFromLatest(
+            LocalizacaoReading(2L, 10L, null, null, at),
+        )
+        val neverPinned = presenceFromLatest(null)
+
+        assertTrue(includeOnMeliponarioMap(isDispositionStatus = true, presence = pinned))
+        assertFalse(includeOnMeliponarioMap(isDispositionStatus = true, presence = cleared))
+        assertFalse(includeOnMeliponarioMap(isDispositionStatus = true, presence = neverPinned))
+        assertTrue(includeOnMeliponarioMap(isDispositionStatus = false, presence = neverPinned))
+    }
 }

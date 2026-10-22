@@ -22,7 +22,7 @@ data class MeliponarioMapResponse(
     val hives: List<MeliponarioMapHiveResponse>,
 )
 
-@Schema(description = "Hive pin + status for the map. Hives without a GPS pin are kept with null lat/lng.")
+@Schema(description = "Hive pin + status for the map. Active hives without a GPS pin are kept with null lat/lng; disposed without a live pin are omitted from hives[].")
 data class MeliponarioMapHiveResponse(
     @Schema(example = "12", description = "Hive code as string; null when the colmeia has no code")
     val code: String?,

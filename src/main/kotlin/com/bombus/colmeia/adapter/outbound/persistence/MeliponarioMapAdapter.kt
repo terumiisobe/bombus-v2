@@ -1,5 +1,6 @@
 package com.bombus.colmeia.adapter.outbound.persistence
 
+import com.bombus.colmeia.application.ColmeiaCountProperties
 import com.bombus.colmeia.application.port.outbound.LoadMeliponarioMapPort
 import com.bombus.colmeia.domain.MeliponarioMapHive
 import com.bombus.colmeia.domain.MeliponarioMapView
@@ -12,21 +13,29 @@ import java.time.ZoneOffset
 /**
  * Single membership-gated read for the map UI.
  *
- * Strategy: one SQL round-trip with dual `LEFT JOIN LATERAL` subqueries —
- * latest status historico (status + note + recorded_at) and latest localizacao per hive —
- * so there is no N+1 for inspection or pin. Empty yards still return via `LEFT JOIN colmeia`.
+ * Strategy: one SQL round-trip — farm row plus a `LEFT JOIN LATERAL` hive subquery with
+ * dual nested `LEFT JOIN LATERAL`s (latest status historico + latest localizacao) so there
+ * is no N+1 for inspection or pin. Empty yards still return via the outer lateral.
+ *
+ * Removed disposed hives (disposition status + no live pin: clear event or never pinned)
+ * are filtered in the hive subquery so a yard whose only hives are removed still returns
+ * `hives: []` rather than a false 404.
  */
 @Component
 class MeliponarioMapAdapter(
     private val jdbc: NamedParameterJdbcTemplate,
+    private val countProperties: ColmeiaCountProperties,
 ) : LoadMeliponarioMapPort {
 
     override fun loadForMember(userId: Long, meliponarioId: Long): MeliponarioMapView? {
+        val dispositionStatuses = countProperties.defaultExcludedStatuses
         val rows = jdbc.query(
             LOAD_SQL,
             MapSqlParameterSource()
                 .addValue("userId", userId)
-                .addValue("meliponarioId", meliponarioId),
+                .addValue("meliponarioId", meliponarioId)
+                .addValue("hasDisposition", dispositionStatuses.isNotEmpty())
+                .addValue("dispositionStatuses", dispositionStatuses.ifEmpty { listOf("__none__") }),
         ) { rs, _ ->
             Row(
                 meliponarioId = rs.getLong("meliponario_id"),
@@ -85,40 +94,61 @@ class MeliponarioMapAdapter(
 
     private companion object {
         // Indexes: idx_colmeia_status_hist_atual, idx_localizacao_atual
+        // Include: active (any pin state) OR disposed with live pin (loc.latitude NOT NULL).
+        // Omit: disposed + clear event / never pinned (same gate as includeOnMeliponarioMap).
         val LOAD_SQL = """
             SELECT
                 m.id AS meliponario_id,
                 m.name AS farm_name,
                 m.address AS address,
-                c.id AS colmeia_id,
-                c.code AS code,
-                c.start_date AS start_date,
-                cur.status_name AS status_name,
-                cur.recorded_at AS last_inspection_at,
-                cur.note AS notes,
-                loc.latitude AS latitude,
-                loc.longitude AS longitude,
-                loc.recorded_at AS location_recorded_at
+                hive.colmeia_id AS colmeia_id,
+                hive.code AS code,
+                hive.start_date AS start_date,
+                hive.status_name AS status_name,
+                hive.last_inspection_at AS last_inspection_at,
+                hive.notes AS notes,
+                hive.latitude AS latitude,
+                hive.longitude AS longitude,
+                hive.location_recorded_at AS location_recorded_at
             FROM meliponario m
-            LEFT JOIN colmeia c ON c.meliponario_id = m.id
             LEFT JOIN LATERAL (
-                SELECT h.recorded_at, h.note, s.name AS status_name
-                FROM colmeia_status_historico h
-                JOIN status_colmeia s ON s.id = h.status_id
-                WHERE h.colmeia_id = c.id
-                ORDER BY h.recorded_at DESC, h.id DESC
-                LIMIT 1
-            ) cur ON true
-            LEFT JOIN LATERAL (
-                SELECT l.latitude, l.longitude, l.recorded_at
-                FROM localizacao l
-                WHERE l.colmeia_id = c.id
-                ORDER BY l.recorded_at DESC, l.id DESC
-                LIMIT 1
-            ) loc ON true
+                SELECT
+                    c.id AS colmeia_id,
+                    c.code AS code,
+                    c.start_date AS start_date,
+                    cur.status_name AS status_name,
+                    cur.recorded_at AS last_inspection_at,
+                    cur.note AS notes,
+                    loc.latitude AS latitude,
+                    loc.longitude AS longitude,
+                    loc.recorded_at AS location_recorded_at
+                FROM colmeia c
+                LEFT JOIN LATERAL (
+                    SELECT h.recorded_at, h.note, s.name AS status_name
+                    FROM colmeia_status_historico h
+                    JOIN status_colmeia s ON s.id = h.status_id
+                    WHERE h.colmeia_id = c.id
+                    ORDER BY h.recorded_at DESC, h.id DESC
+                    LIMIT 1
+                ) cur ON true
+                LEFT JOIN LATERAL (
+                    SELECT l.latitude, l.longitude, l.recorded_at
+                    FROM localizacao l
+                    WHERE l.colmeia_id = c.id
+                    ORDER BY l.recorded_at DESC, l.id DESC
+                    LIMIT 1
+                ) loc ON true
+                WHERE c.meliponario_id = m.id
+                  AND (
+                    CAST(:hasDisposition AS BOOLEAN) = FALSE
+                    OR cur.status_name IS NULL
+                    OR cur.status_name NOT IN (:dispositionStatuses)
+                    OR loc.latitude IS NOT NULL
+                  )
+            ) hive ON true
             WHERE m.id = :meliponarioId
               AND $ACCESSIBLE_MELIPONARIO
-            ORDER BY c.code NULLS LAST, c.id
+            ORDER BY hive.code NULLS LAST, hive.colmeia_id
         """.trimIndent()
     }
 }
