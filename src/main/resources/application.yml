@@ -19,8 +19,9 @@ twilio:
   public-base-url: ${TWILIO_PUBLIC_BASE_URL}
 
 colmeia:
-  # Statuses excluded by default from a plain/species count and default list (resolved at runtime).
-  # The same set releases hive codes for reuse via soft uniqueness (codes stay on the row).
+  # Statuses excluded by default from a plain/species count and default list (at mark).
+  # Code soft-release is separate: disposing + live pin still holds the code until clear
+  # (or never-pinned at mark). Soft uniqueness lives in isCodeTaken; codes stay on the row.
   default-excluded-statuses:
     - perdida
     - vendida

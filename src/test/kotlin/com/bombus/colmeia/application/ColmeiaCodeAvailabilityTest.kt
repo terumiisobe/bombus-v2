@@ -31,7 +31,8 @@ class ColmeiaCodeAvailabilityTest {
     }
 
     @Test
-    fun `passes soft uniqueness ignore ids for perdida and vendida`() {
+    fun `passes disposition status ids so adapter can free only without live pin`() {
+        // Application passes perdida/vendida ids; pin-gated free is enforced in isCodeTaken SQL.
         val port = RecordingPort(taken = false)
         availability(port).assertAvailable(meliponarioId = 10L, code = 4, exceptColmeiaId = 99L)
 

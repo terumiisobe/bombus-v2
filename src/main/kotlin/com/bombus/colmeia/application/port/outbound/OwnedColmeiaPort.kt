@@ -54,8 +54,11 @@ interface OwnedColmeiaPort {
 
     /**
      * Whether [code] is held by another hive in [meliponarioId].
-     * Hives whose current status is in [ignoreStatusIds] do not block reuse
-     * (code-releasing statuses keep their code on the row).
+     *
+     * Soft uniqueness: hives whose current status is in [ignoreStatusIds] (typically
+     * `perdida` / `vendida`) do **not** block reuse **unless** they still have a
+     * **live pin** (latest `localizacao` has coordinates). Clear event or never-pinned
+     * disposed rows free the code; the code value stays on the row either way.
      */
     fun isCodeTaken(
         meliponarioId: Long,

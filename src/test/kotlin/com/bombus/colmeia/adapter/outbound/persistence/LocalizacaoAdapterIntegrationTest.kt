@@ -1,6 +1,7 @@
 package com.bombus.colmeia.adapter.outbound.persistence
 
 import com.bombus.colmeia.application.port.outbound.AppendLocalizacao
+import com.bombus.colmeia.application.port.outbound.AppendLocalizacaoClear
 import com.bombus.config.BombusApplication
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -144,6 +145,53 @@ class LocalizacaoAdapterIntegrationTest {
                 hive.id,
             ),
         ).isEqualTo(2L)
+    }
+
+    @Test
+    fun `appendClear keeps prior pin history and makes current pin none`() {
+        val hive = owned.insert(
+            code = 8,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = null,
+            initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
+        )
+        val pinAt = Instant.parse("2026-10-15T10:00:00Z")
+        val clearAt = Instant.parse("2026-10-15T12:00:00Z")
+
+        localizacao.append(
+            AppendLocalizacao(OWNER, hive.id, BigDecimal("-23.5"), BigDecimal("-46.6"), pinAt),
+        )
+        val cleared = localizacao.appendClear(
+            AppendLocalizacaoClear(OWNER, hive.id, clearAt),
+        )
+
+        assertThat(cleared).isNotNull
+        assertThat(cleared!!.isClearEvent).isTrue()
+        assertThat(cleared.latitude).isNull()
+        assertThat(cleared.longitude).isNull()
+        assertThat(cleared.recordedAt).isEqualTo(clearAt)
+
+        assertThat(
+            jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM localizacao WHERE colmeia_id = ?",
+                Long::class.java,
+                hive.id,
+            ),
+        ).isEqualTo(2L)
+
+        val latest = jdbcTemplate.queryForMap(
+            """
+            SELECT latitude, longitude FROM localizacao
+            WHERE colmeia_id = ?
+            ORDER BY recorded_at DESC, id DESC
+            LIMIT 1
+            """.trimIndent(),
+            hive.id,
+        )
+        assertThat(latest["latitude"]).isNull()
+        assertThat(latest["longitude"]).isNull()
     }
 
     private fun insertUsuario(id: Long, email: String) {

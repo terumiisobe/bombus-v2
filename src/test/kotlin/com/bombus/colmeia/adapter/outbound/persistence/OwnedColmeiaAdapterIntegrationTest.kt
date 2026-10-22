@@ -83,7 +83,7 @@ class OwnedColmeiaAdapterIntegrationTest {
     }
 
     @Test
-    fun `perdida keeps code but soft-uniqueness frees it for reuse`() {
+    fun `never-pinned perdida soft-uniqueness frees code at mark`() {
         val first = adapter.insert(
             code = 9,
             speciesId = 1,
@@ -99,6 +99,7 @@ class OwnedColmeiaAdapterIntegrationTest {
             AppendColmeiaStatus(first.id, perdidaId, Instant.now().plusSeconds(60)),
         )!!
         assertThat(lost.code).isEqualTo(9)
+        // No localizacao rows → never-pinned → code free at mark.
         assertThat(adapter.isCodeTaken(MEL, 9, ignoreStatusIds = listOf(perdidaId, vendidaId))).isFalse()
 
         val reused = adapter.insert(9, 2, MEL, null, estavelId, OWNER)
@@ -108,7 +109,7 @@ class OwnedColmeiaAdapterIntegrationTest {
     }
 
     @Test
-    fun `vendida keeps code but soft-uniqueness frees it for reuse`() {
+    fun `never-pinned vendida soft-uniqueness frees code at mark`() {
         val first = adapter.insert(
             code = 8,
             speciesId = 1,
@@ -127,6 +128,61 @@ class OwnedColmeiaAdapterIntegrationTest {
         assertThat(reused.code).isEqualTo(8)
         assertThat(adapter.findByCodeForOwner(OWNER, 8)).extracting("id")
             .containsExactlyInAnyOrder(first.id, reused.id)
+    }
+
+    @Test
+    fun `disposed with live pin still holds code until clear`() {
+        val first = adapter.insert(
+            code = 42,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = Instant.parse("2026-01-01T00:00:00Z"),
+            initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
+        )
+        jdbcTemplate.update(
+            """
+            INSERT INTO localizacao (colmeia_id, latitude, longitude, recorded_at)
+            VALUES (?, -23.550520, -46.633308, NOW())
+            """.trimIndent(),
+            first.id,
+        )
+        adapter.appendStatus(
+            AppendColmeiaStatus(first.id, perdidaId, Instant.now().plusSeconds(60)),
+        )
+
+        val dispositionIds = listOf(perdidaId, vendidaId)
+        // Mark+pin: count exclude (list) but code still held.
+        assertThat(
+            adapter.listByOwner(
+                OWNER,
+                ColmeiaCountFilter(excludeStatusIds = dispositionIds.toSet()),
+                limit = 20,
+                offset = 0,
+            ),
+        ).extracting("id").doesNotContain(first.id)
+        assertThat(adapter.isCodeTaken(MEL, 42, ignoreStatusIds = dispositionIds)).isTrue()
+
+        // Visit-2 clear: append null coords; prior pin kept; code frees.
+        jdbcTemplate.update(
+            """
+            INSERT INTO localizacao (colmeia_id, latitude, longitude, recorded_at)
+            VALUES (?, NULL, NULL, NOW() + INTERVAL '1 minute')
+            """.trimIndent(),
+            first.id,
+        )
+        assertThat(adapter.isCodeTaken(MEL, 42, ignoreStatusIds = dispositionIds)).isFalse()
+
+        val locCount = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM localizacao WHERE colmeia_id = ?",
+            Long::class.java,
+            first.id,
+        )
+        assertThat(locCount).isEqualTo(2L)
+
+        val reused = adapter.insert(42, 2, MEL, null, estavelId, OWNER)
+        assertThat(reused.code).isEqualTo(42)
+        assertThat(reused.id).isNotEqualTo(first.id)
     }
 
     @Test
