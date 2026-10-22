@@ -265,10 +265,20 @@ class OwnedColmeiaAdapter(
             )
         }
 
+        // Soft uniqueness: disposition statuses in ignoreStatusIds free the code only when
+        // there is no live pin (no localizacao rows, or latest row has null coords = clear).
+        // Disposed + live pin still blocks reuse until visit-2 clear.
         val CODE_TAKEN_SQL = """
             SELECT COUNT(*)
             FROM colmeia c
             $LATEST_STATUS
+            LEFT JOIN LATERAL (
+                SELECT l.latitude
+                FROM localizacao l
+                WHERE l.colmeia_id = c.id
+                ORDER BY l.recorded_at DESC, l.id DESC
+                LIMIT 1
+            ) loc ON true
             WHERE c.meliponario_id = :meliponarioId
               AND c.code = :code
               AND (CAST(:exceptColmeiaId AS BIGINT) IS NULL OR c.id IS DISTINCT FROM CAST(:exceptColmeiaId AS BIGINT))
@@ -276,6 +286,7 @@ class OwnedColmeiaAdapter(
                 CAST(:hasIgnore AS BOOLEAN) = FALSE
                 OR cur.status_id IS NULL
                 OR cur.status_id NOT IN (:ignoreStatusIds)
+                OR loc.latitude IS NOT NULL
               )
         """.trimIndent()
 

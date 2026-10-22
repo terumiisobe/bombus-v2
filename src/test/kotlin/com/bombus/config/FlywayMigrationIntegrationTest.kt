@@ -32,7 +32,7 @@ class FlywayMigrationIntegrationTest {
             String::class.java,
         )
 
-        assertThat(applied).contains("1", "2", "3", "4", "5", "6", "7", "8")
+        assertThat(applied).contains("1", "2", "3", "4", "5", "6", "7", "8", "9")
     }
 
     @Test
@@ -47,6 +47,29 @@ class FlywayMigrationIntegrationTest {
 
         assertThat(columns).contains("latitude", "longitude", "recorded_at", "colmeia_id")
         assertThat(columns).doesNotContain("accuracy_meters")
+    }
+
+    @Test
+    fun `localizacao coords are nullable after V9 for clear events`() {
+        val nullable = jdbcTemplate.queryForList(
+            """
+            SELECT column_name, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'localizacao'
+              AND column_name IN ('latitude', 'longitude')
+            """.trimIndent(),
+        )
+        assertThat(nullable).hasSize(2)
+        assertThat(nullable).allMatch { it["is_nullable"] == "YES" }
+
+        val check = jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*) FROM information_schema.check_constraints
+            WHERE constraint_name = 'localizacao_coords_both_or_neither'
+            """.trimIndent(),
+            Long::class.java,
+        )
+        assertThat(check).isEqualTo(1L)
     }
 
     @Test

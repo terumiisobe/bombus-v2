@@ -2,6 +2,7 @@ package com.bombus.colmeia.application
 
 import com.bombus.colmeia.application.port.inbound.RecordColmeiaLocationCommand
 import com.bombus.colmeia.application.port.outbound.AppendLocalizacao
+import com.bombus.colmeia.application.port.outbound.AppendLocalizacaoClear
 import com.bombus.colmeia.application.port.outbound.OwnedColmeiaPort
 import com.bombus.colmeia.application.port.outbound.SaveLocalizacaoPort
 import com.bombus.colmeia.domain.ColmeiaCommandError
@@ -98,6 +99,9 @@ class RecordColmeiaLocationServiceTest {
     private class RecordingSavePort : SaveLocalizacaoPort {
         var last: AppendLocalizacao? = null
             private set
+
+        override fun appendClear(command: AppendLocalizacaoClear): LocalizacaoReading? =
+            error("unused")
 
         override fun append(command: AppendLocalizacao): LocalizacaoReading {
             last = command
