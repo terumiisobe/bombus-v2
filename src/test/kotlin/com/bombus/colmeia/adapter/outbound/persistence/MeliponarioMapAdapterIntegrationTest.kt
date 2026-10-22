@@ -2,6 +2,7 @@ package com.bombus.colmeia.adapter.outbound.persistence
 
 import com.bombus.colmeia.application.port.outbound.AppendColmeiaStatus
 import com.bombus.colmeia.application.port.outbound.AppendLocalizacao
+import com.bombus.colmeia.application.port.outbound.AppendLocalizacaoClear
 import com.bombus.config.BombusApplication
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -48,6 +49,8 @@ class MeliponarioMapAdapterIntegrationTest {
 
     private val desenvolvendoId: Long get() = statusLookup.findIdByName("desenvolvendo")!!
     private val estavelId: Long get() = statusLookup.findIdByName("estavel")!!
+    private val perdidaId: Long get() = statusLookup.findIdByName("perdida")!!
+    private val vendidaId: Long get() = statusLookup.findIdByName("vendida")!!
 
     @BeforeEach
     fun seed() {
@@ -121,6 +124,120 @@ class MeliponarioMapAdapterIntegrationTest {
         val view = mapAdapter.loadForMember(OWNER, MEL)!!
         assertThat(view.farmName).isEqualTo("Meliponário Isobe")
         assertThat(view.address).isEqualTo("Rua das Abelhas 100")
+        assertThat(view.hives).isEmpty()
+    }
+
+    @Test
+    fun `includes disposed hive that still has a live pin`() {
+        val onsite = owned.insert(
+            code = 20,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = Instant.parse("2025-01-01T00:00:00Z"),
+            initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
+        )
+        localizacao.append(
+            AppendLocalizacao(
+                userId = OWNER,
+                colmeiaId = onsite.id,
+                latitude = BigDecimal("-23.900000"),
+                longitude = BigDecimal("-46.900000"),
+                recordedAt = Instant.parse("2026-10-01T12:00:00Z"),
+            ),
+        )
+        owned.appendStatus(
+            AppendColmeiaStatus(
+                colmeiaId = onsite.id,
+                statusId = vendidaId,
+                recordedAt = Instant.parse("2026-10-10T12:00:00Z"),
+                recordedByUserId = OWNER,
+            ),
+        )
+
+        val view = mapAdapter.loadForMember(OWNER, MEL)!!
+
+        assertThat(view.hives).hasSize(1)
+        val hive = view.hives.single()
+        assertThat(hive.code).isEqualTo(20)
+        assertThat(hive.statusName).isEqualTo("vendida")
+        assertThat(hive.latitude).isEqualByComparingTo(BigDecimal("-23.900000"))
+        assertThat(hive.longitude).isEqualByComparingTo(BigDecimal("-46.900000"))
+    }
+
+    @Test
+    fun `omits never-pinned disposed hive but keeps active unpinned`() {
+        owned.insert(
+            code = 21,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = null,
+            initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
+        )
+        val lostUnpinned = owned.insert(
+            code = 22,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = Instant.parse("2025-02-01T00:00:00Z"),
+            initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
+        )
+        owned.appendStatus(
+            AppendColmeiaStatus(
+                colmeiaId = lostUnpinned.id,
+                statusId = perdidaId,
+                recordedAt = Instant.parse("2026-10-10T12:00:00Z"),
+                recordedByUserId = OWNER,
+            ),
+        )
+
+        val view = mapAdapter.loadForMember(OWNER, MEL)!!
+
+        assertThat(view.hives).extracting("code").containsExactly(21)
+        assertThat(view.hives.single().latitude).isNull()
+        assertThat(view.hives.single().longitude).isNull()
+        assertThat(view.hives.single().statusName).isEqualTo("desenvolvendo")
+    }
+
+    @Test
+    fun `omits disposed hive after clear event and keeps farm when only removed remain`() {
+        val sold = owned.insert(
+            code = 23,
+            speciesId = 1,
+            meliponarioId = MEL,
+            startDate = Instant.parse("2025-03-01T00:00:00Z"),
+            initialStatusId = desenvolvendoId,
+            recordedByUserId = OWNER,
+        )
+        localizacao.append(
+            AppendLocalizacao(
+                userId = OWNER,
+                colmeiaId = sold.id,
+                latitude = BigDecimal("-23.910000"),
+                longitude = BigDecimal("-46.910000"),
+                recordedAt = Instant.parse("2026-10-01T12:00:00Z"),
+            ),
+        )
+        owned.appendStatus(
+            AppendColmeiaStatus(
+                colmeiaId = sold.id,
+                statusId = vendidaId,
+                recordedAt = Instant.parse("2026-10-10T12:00:00Z"),
+                recordedByUserId = OWNER,
+            ),
+        )
+        localizacao.appendClear(
+            AppendLocalizacaoClear(
+                userId = OWNER,
+                colmeiaId = sold.id,
+                recordedAt = Instant.parse("2026-10-15T12:00:00Z"),
+            ),
+        )
+
+        val view = mapAdapter.loadForMember(OWNER, MEL)!!
+
+        assertThat(view.farmName).isEqualTo("Meliponário Isobe")
         assertThat(view.hives).isEmpty()
     }
 

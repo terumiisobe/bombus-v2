@@ -38,6 +38,15 @@ fun holdsCodeForReuse(isDispositionStatus: Boolean, presence: HiveLocationPresen
     !isDispositionStatus || presence.hasLivePin
 
 /**
+ * Whether a hive appears in `GET /v1/meliponarios/{id}` `hives[]`.
+ * Active hives always included (even never-pinned → null lat/lng).
+ * Disposed (`vendida`/`perdida`) only while [presence] is a live pin (onsite awaiting pickup);
+ * cleared or never-pinned disposed are omitted.
+ */
+fun includeOnMeliponarioMap(isDispositionStatus: Boolean, presence: HiveLocationPresence): Boolean =
+    !isDispositionStatus || presence.hasLivePin
+
+/**
  * Map the latest location reading (or none) to presence.
  * Callers must pass the current row only (latest by recorded_at, id).
  */

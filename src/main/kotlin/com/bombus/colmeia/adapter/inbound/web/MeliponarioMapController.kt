@@ -32,7 +32,9 @@ class MeliponarioMapController(
     @Operation(
         summary = "Get meliponário map snapshot",
         description = "Returns farm name, aggregate updatedAt, and hives with pin/status/inspection fields. " +
-            "Hives without a GPS pin are included with null lat/lng. " +
+            "Active hives without a GPS pin are included with null lat/lng. " +
+            "Disposed (sold/lost) hives are included only while they still have a live pin; " +
+            "cleared or never-pinned disposed hives are omitted from hives[]. " +
             "Auth: interim X-User-Id header (usuario.id); access gated by meliponario_membro.",
     )
     @ApiResponse(
